@@ -7,7 +7,8 @@ import * as G from './game.js';
 import { boxGeom, COUNTER_Y, tapMode, guestX, grillSlotX, basketX, WOK_CX, steamX, POT_CX, soupX } from './render.js';
 import { drawFrame, lineTyped, choiceBox, defaultTitlePage, TITLE_PAGES, logPages, shopPages, defaultShopPage, badgePages } from './screens.js';
 import { computeView, setLayout, LAY } from './layout.js';
-import { designToScreen } from './ui.js';
+import { designToScreen, setPatterns } from './ui.js';
+import { tipSetFor, newTips, currentTip, markSeen, showTipsAgain } from './tips.js';
 import { createFx, updateFx, spawn, floatText, coinBurst, bounce, toast } from './fx.js';
 import * as audio from './audio.js';
 import { loadAssets } from './assets.js';
@@ -92,6 +93,7 @@ audio.setMuted(save.muted);
 audio.setMusicVolume(save.musicVol);
 audio.setAmbienceVolume(save.ambVol);
 audio.setSfxVolume(save.sfxVol);
+setPatterns(save.patterns);
 const seedParam = params.has('seed') ? Number(params.get('seed')) : undefined;
 // After the KEEPER ending, Eoreum comes to endless nights now and then.
 const visitorsFor = (s) => (s.story && s.story.endings && s.story.endings.keeper ? ['ice'] : []);
@@ -107,7 +109,7 @@ const app = {
 
   setTitlePage(i) { app.titlePage = Math.max(0, Math.min(TITLE_PAGES.length - 1, i)); },
   setLogPage(i) { app.logPage = Math.max(0, Math.min(logPages() - 1, i)); },
-  setShopPage(i) { app.shopPage = Math.max(0, Math.min(shopPages(LAY.mode === 'wide').length - 1, i)); },
+  setShopPage(i) { app.shopPage = Math.max(0, Math.min(shopPages().length - 1, i)); },
   setBadgePage(i) { app.badgePage = Math.max(0, Math.min(badgePages() - 1, i)); app.badgeSel = null; },
 
   say(text, good = false) { toast(app.fx, text, good); audio.play('tap'); },
@@ -148,6 +150,17 @@ const app = {
     audio.play('tap');
   },
 
+  // Colour patterns (colourblind mode): shapes on every colour signal.
+  togglePatterns() { save.patterns = !save.patterns; setPatterns(save.patterns); writeSave(save); audio.play('tap'); },
+  // First-night tips: SKIP turns them all off; SHOW TIPS AGAIN brings them back
+  // (from the next night, or this one if it is a night with tips).
+  skipTips() { markSeen(save); writeSave(save); app.tips = null; app.tip = null; audio.play('tap'); },
+  showTipsAgain() {
+    showTipsAgain(save); writeSave(save);
+    if (app.g && !app.tips) app.tips = newTips(tipSetFor(app.g.level, save));
+    app.say('TIPS ARE BACK', true);
+  },
+
   toTitle() { app.screen = 'title'; app.g = null; app.fx = createFx(); app.drag = null; app.banner = null; audio.setRain(false); audio.setWinter(false); },
   // Before a level: its story scene, the first time only (the log replays it).
   playLevel(n) {
@@ -169,6 +182,7 @@ const app = {
     app.fx = createFx();
     app.shownCoins = 0; app.slide = null; app.drag = null; app.snap = null; app.banner = null;
     app.nightMemories = new Set(); app.lastPay = 0; app.dogHinted = false;
+    app.tips = newTips(tipSetFor(n, save)); app.tip = null; // first-night tips (night 1, a new station)
     audio.setRain(!!app.g.def.rain);
     audio.setWinter(!!app.g.def.winter);
   },
@@ -191,7 +205,7 @@ const app = {
   },
 
   // ---------- shop ----------
-  openShop(next) { app.screen = 'shop'; app.g = null; app.shopNext = next; app.shopMsg = null; app.shopPage = defaultShopPage(save, LAY.mode === 'wide'); audio.setRain(false); },
+  openShop(next) { app.screen = 'shop'; app.g = null; app.shopNext = next; app.shopMsg = null; app.shopPage = defaultShopPage(save); audio.setRain(false); },
   leaveShop() { if (app.shopNext) app.playLevel(app.shopNext); else app.toTitle(); },
   buy(id) {
     const purse = { wallet: save.wallet, upgrades: save.upgrades, stars: save.stars };
@@ -444,6 +458,10 @@ function step(dt) {
     G.update(app.g, dt);
     ambient(dt);
     handleEvents();
+    if (app.tips) {
+      app.tip = currentTip(app.g, app.tips, tapMode(app) ? 'tap' : 'drag');
+      if (app.tips.done) { markSeen(save, [app.tips.set]); writeSave(save); app.tips = null; app.tip = null; }
+    }
     if (app.slide) { app.slide.k += dt / 0.22; if (app.slide.k >= 1) app.slide = null; }
   }
   if (app.banner) { app.banner.t += dt; if (app.banner.t > app.banner.life) app.banner = null; }
@@ -981,6 +999,36 @@ const SHOTS = {
   badges2() { SHOTS.title3end(); Object.assign(save.badges, { goldsoup: true, keeper: true, warmhands: true }); app.openBadges(); app.setBadgePage(1); app.pickBadge(24); run(0.3); },
   storylog3() { save.story.seen = { l14: true, l15: true, l16: true, l17: true, l18: true, l19: true, l19b: true }; save.story.endings = { thaw: 1 }; save.story.memories = { ice: 1, frog: 5 }; app.openLog(); app.setLogPage(3); },
   end19() { save.wallet = 3300; save.stars = { 18: 2 }; play(19); while (app.g.phase === 'play') autoServe(); run(2.2); },
+  // Every food in the small order pictures: three tickets (a line of guests),
+  // and the single guest's bubble.
+  bubbles() {
+    play(17); run(9); const g = app.g;
+    const sets = [['soda', 'tea', 'beer', 'kimbap', 'toast'], ['galbi', 'sausage', 'chicken', 'mandu', 'bun'], ['tteokbokki', 'japchae', 'friedrice', 'ramyeon', 'tteokguk']];
+    const sauces = { galbi: 'honey', chicken: 'yangnyeom', mandu: 'soydip', tteokguk: 'gim', ramyeon: 'egg' };
+    g.line.filter((c) => c.phase === 'wait').slice(0, 3).forEach((c, i) => { c.order = { ...c.order, lines: sets[i].map((item) => ({ item, sauce: sauces[item] || null })), vip: false, rush: false }; });
+    run(0.2);
+  },
+  // First-night tips: the order, grab (drag and tap), serve, a new station.
+  tiporder() { play(1); run(0.5); },
+  tip1() { play(1); run(3); },
+  tip1tap() { save.tapControls = true; play(1); run(3); },
+  tipserve() { play(1); run(3); const g = app.g; for (const l of G.waiting(g)[0].order.lines) G.grabReady(g, l.item); run(0.3); },
+  tippatience() { play(1); autoServe(); waitForGuest(); run(0.5); },
+  tipgrill() { save.stars = { 1: 3 }; play(2); run(0.5); },
+  tipgrillcook() { save.stars = { 1: 3 }; play(2); const g = app.g; G.grillAdd(g, 'galbi', 0); run(3); },
+  tipsoup() { save.stars = { 15: 2 }; save.tapControls = true; play(16); const g = app.g; G.soupAdd(g, 'tteokguk'); run(2); },
+  // Colorblind mode: shapes on the meters, legend, tab dots and patience bars.
+  cbgrill() { save.patterns = true; setPatterns(true); SHOTS.cookgrill(); },
+  cbbusy() {
+    save.patterns = true; setPatterns(true); play(17); run(10); const g = app.g;
+    G.grillAdd(g, 'galbi', 0); Object.assign(g.grill[0], { sides: [1.02, 0.96], down: 1 }); G.grillAdd(g, 'sausage', 1); Object.assign(g.grill[1], { sides: [1.9, 0.7], down: 0 });
+    G.fryBatter(g); run(0.5); G.fryToBasket(g, 0); g.fryer.baskets[0].p = 0.74;
+    g.tray.push({ item: 'chicken', cook: 'done', perfect: true, sauce: 'yangnyeom', warm: 0.9 }, { item: 'mandu', cook: 'done', perfect: false, sauce: null, warm: 0, cold: true }, { item: 'soda', cook: null, perfect: false, sauce: null });
+    for (const c of g.line) if (c.phase === 'wait') c.patience = c.maxPatience * 0.25;
+    app.goStation(1); run(0.5);
+  },
+  settingscb() { save.patterns = true; setPatterns(true); SHOTS.settings(); },
+  bubble1() { play(7); run(3); const g = app.g; g.line[0].order = { ...g.line[0].order, lines: [{ item: 'mandu', sauce: 'chilioil' }, { item: 'bun', sauce: null }, { item: 'tea', sauce: null }] }; run(0.2); },
 };
 const ALL13 = Object.fromEntries(LEVELS.filter((L) => L.n <= 13).map((L) => [L.n, 3]));
 // Enough kept promises for the TOGETHER ending (story.js PROMISES).
@@ -1002,6 +1050,7 @@ window.nightMarket = { app, G, step, SHOTS, save, scoreServe, choiceBox, toCss, 
 loadAssets().then(() => {
   registerFoodArt();
   const shot = params.get('shot');
+  if (shot && !shot.startsWith('tip')) markSeen(save); // the tips only show in their own presets
   if (shot && SHOTS[shot]) {
     SHOTS[shot]();
     app.frozen = true;

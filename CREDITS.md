@@ -6,7 +6,7 @@ Each pack's license file sits next to its files in `assets/`.
 
 | Files | What they are in the game | Pack and author | Source | License |
 |---|---|---|---|---|
-| `assets/food/*.png` (17 sprites, 16 x 16, unmodified) | Soda, kimbap, egg toast, galbi (raw and grilled), sausage, raw chicken, fried chicken, raw rice (rice ball), the sauces: honey, chili, yangnyeom (red chili), soy garlic (garlic), the wok toppings: fried egg, scallion, and (since Nov 13) steamed mandu (dumpling) and the steamed bun (mochi, with a red stamp drawn on at run time) | "16x16 Food" by ARoachIFoundOnMyPillow | <https://opengameart.org/content/16x16-food> | CC0 1.0 (`assets/food/LICENSE.txt`) |
+| `assets/food/*.png` (14 sprites, 16 x 16, unmodified) | Soda, kimbap, egg toast, galbi (raw and grilled), sausage, raw chicken (drumstick), raw rice (rice ball), the sauces: honey, chili, yangnyeom (red chili), soy garlic (garlic), the wok toppings: fried egg, scallion. (The pack's dumpling, mochi and chicken nuggets were used for mandu, the bun and fried chicken until Nov 13, then replaced with code-drawn sprites that read at the order bubble's size.) | "16x16 Food" by ARoachIFoundOnMyPillow | <https://opengameart.org/content/16x16-food> | CC0 1.0 (`assets/food/LICENSE.txt`) |
 | `assets/kenney-rpg-urban/tilemap_packed.png` (unmodified sheet; the front-facing frame of its six people is used) | The normal people who now and then come to the stall | "RPG Urban Pack" by Kenney (www.kenney.nl) | <https://opengameart.org/content/rpg-urban-pack> (also <https://kenney.nl/assets/rpg-urban-pack>) | CC0 1.0 (`assets/kenney-rpg-urban/License.txt`, Kenney's original) |
 
 Made for this game (MIT, see LICENSE):
@@ -20,18 +20,23 @@ Made for this game (MIT, see LICENSE):
   film or game. The cold voice of the night 13 epilogue has no sprite, only
   frost and two eyes, drawn in code.
 - **The wok dishes** (`src/art.js`): raw rice cakes, tteokbokki, raw glass
-  noodles, japchae and fried rice, drawn in code to match the food pack where it
-  has no sprite.
+  noodles, japchae (redrawn Nov 13 as a mound of noodles on a plate) and fried
+  rice, drawn in code to match the food pack where it has no sprite.
+- **Mandu, the steamed bun and fried chicken** (`src/art.js`, Nov 13): a
+  pleated half-moon dumpling, a dome bun on its square of paper with a red
+  stamp, and a golden crumbed drumstick (the shape of the pack's raw
+  drumstick), drawn in the pack's style so they read at the order bubble's
+  size (1x). Raw dough is a recolour made at run time.
 - **Part 2 food** (`src/art.js`): a block of instant ramyeon, a bowl of
   ramyeon (drawn on the food pack's own soup bowl shape and colours), the soy
   dip and chili oil dishes, and Chimaek's plain beef (raw and grilled), drawn in
   code in the pack's style. The pack has no ramyeon, dips or plain beef; no
   CC0 or CC-BY 16 x 16 sprite for them was found (searched Nov 13: OpenGameArt,
-  itch.io free packs, Kenney). Mandu and buns now use the pack's own sprites;
-  their raw dough is a recolour made at run time.
+  itch.io free packs, Kenney).
 - **Part 3** (`src/art.js`): Eoreum, the long winter (a carp of clear river
-  ice floating upright, with icicle fins, a crown of frost and a crack down one
-  side), an original design inspired by the mood of hand-drawn Japanese fantasy
+  ice seen side on, floating in the air: scales, icicle fins, a forked tail, a
+  crown of frost and a crack under one eye like a tear; redrawn Nov 13 so it
+  reads as a fish, not a ghost), an original design inspired by the mood of hand-drawn Japanese fantasy
   films and not based on any existing character; tteokguk (rice cake soup on
   the food pack's soup bowl shape and colours, as ramyeon is), raw sliced rice
   cakes and seaweed (gim), drawn in code in the pack's style. The pack in
@@ -47,8 +52,8 @@ Made for this game (MIT, see LICENSE):
   knob, glaze band, white eyes under heavy brows, a frown, stub feet).
 - Cooking stages (raw, battered, pale, burnt, soggy, raw dough) are per-pixel recolours of the food
   sprites made at run time (`src/assets.js`).
-- Bitmap fonts (`src/font.js`, with `<` and `=` added): copied from Chris Llaga's
-  Crowd Runner (MIT).
+- Bitmap fonts (`src/font.js`, with `<` and `=` added): copied from Crowd
+  Runner, the same author's earlier game (MIT).
 - All sound: synthesized with WebAudio at run time, no audio files. Music in
   `src/music.js`, market ambience (crowd, wind, far-off sizzle, wind chimes, rain)
   in `src/ambience.js`, sound effects in `src/audio.js`.

@@ -1,7 +1,7 @@
 // Pure game rules: seeded orders, cooking state machine, scoring, stars, unlocks.
 import {
   ITEMS, SAUCES, COOK, LEVELS, STAR_SHARES, LOOKS, PERSON_SHARE, WOK_ITEMS, STEAM_ITEMS, STATION_SAUCES, UPGRADES, GRILL_SLOTS,
-  TRAY_MAX, STEAM_BASKETS, KETTLE_BOIL, STATION_ORDER, STATION_KIND, sauceSuits, VIP_PAY, VIP_PATIENCE, SPECIAL_PAY, RUSH_PATIENCE, ENDLESS,
+  TRAY_MAX, STEAM_BASKETS, KETTLE_BOIL, FAST_COOK, SILK_PATIENCE, STATION_ORDER, STATION_KIND, sauceSuits, VIP_PAY, VIP_PATIENCE, SPECIAL_PAY, RUSH_PATIENCE, ENDLESS,
   WINTER_ENDLESS, STATIONS, SOUP_POTS, WINTER,
 } from './data.js';
 import { SPIRITS, spiritsFor } from './spirits.js';
@@ -244,9 +244,15 @@ export function makeOrders(levelN, seed) {
   const def = levelDef(levelN);
   const r = rng(seed ?? def.seed);
   const orders = [];
+  // `sauceCap` (winter nights): at most this share of the guests ask for a
+  // sauce or garnish; past it, an order comes plain (batch 18 tuning: the
+  // cold is part 3's challenge, so a night is not mostly garnish too).
+  const capN = def.sauceCap != null ? Math.round(def.sauceCap * def.customers) : Infinity;
+  let sauced = 0;
   for (let i = 0; i < def.customers; i++) {
     const rush = isRush(def, i);
     const o = rush ? rushOrder(levelN, r) : makeOrder(levelN, i, r);
+    if (o.lines.some((l) => l.sauce) && ++sauced > capN) o.lines = o.lines.map((l) => (l.sauce ? line(l.item, null) : l));
     o.look = pickLook(levelN, i, r, def);
     // A guest who waits at the end of the line all night (Eoreum, part 3).
     if (def.last && i === def.customers - 1) { o.lines = def.lastOrder.map((l) => line(l.item, l.sauce)); o.look = def.last; }
@@ -522,6 +528,9 @@ export function upgradeEffects(owned = {}) {
     potStaysHot: !!o.kettle,
     soupPots: SOUP_POTS + (o.soup2 ? 1 : 0),
     stickSafe: COOK.soup.stickSafe * (o.ironpot ? 2 : 1),
+    steamTime: COOK.steam.time * (o.steamfast ? FAST_COOK : 1),
+    potTime: COOK.pot.time * (o.potfast ? FAST_COOK : 1),
+    rushVipMul: o.silk ? SILK_PATIENCE : 1,
   };
 }
 // Cooking specs for a game with these upgrades (copies; COOK is never changed).
@@ -529,7 +538,7 @@ export function cookSpecs(owned) {
   const e = upgradeEffects(owned);
   return {
     grill: { ...COOK.grill }, fry: { ...COOK.fry, time: e.fryTime }, wok: { ...COOK.wok, perToss: e.perToss },
-    steam: { ...COOK.steam }, pot: { ...COOK.pot, boil: e.potBoil }, soup: { ...COOK.soup, stickSafe: e.stickSafe },
+    steam: { ...COOK.steam, time: e.steamTime }, pot: { ...COOK.pot, boil: e.potBoil, time: e.potTime }, soup: { ...COOK.soup, stickSafe: e.stickSafe },
   };
 }
 export const upgradeById = (id) => UPGRADES.find((u) => u.id === id) || null;

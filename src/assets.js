@@ -6,11 +6,11 @@ import { makeCanvas, hex } from './gfx.js';
 export const FOOD_FILES = {
   soda: 'canned_food_4', kimbap: 'sushi_roll', toast: 'sandwich',
   galbi_raw: 'steak_raw', galbi: 'steak_grilled', sausage: 'sausage',
-  chicken_raw: 'chicken_drumstick_raw', chicken: 'chicken_nuggets',
+  chicken_raw: 'chicken_drumstick_raw',
   honey: 'honey_pot', spicy: 'chili_pepper_green', yangnyeom: 'chili_pepper_red', soygarlic: 'garlic',
   egg: 'egg_fried', scallion: 'scallions', rice_raw: 'rice_ball',
-  // part 2: steamed mandu and the steamed bun (its red stamp is added at run time)
-  mandu: 'dumpling', bun_plain: 'mochi',
+  // Fried chicken, mandu and the steamed bun are drawn in code (src/art.js):
+  // the pack's nuggets, dumpling and mochi did not read at the order bubble's size.
 };
 // assets/kenney-rpg-urban: Kenney's RPG Urban Pack (CC0), 16 x 16 tiles, no spacing.
 export const URBAN = { file: 'assets/kenney-rpg-urban/tilemap_packed.png', cols: 27, tile: 16 };

@@ -320,7 +320,7 @@ export const SCENES = [
       { who: 'STORY', text: 'The lanterns light themselves anyway. The line forms. At the very end of it, something waits that does not move.' },
       { who: 'lantern', text: 'Brr. Even ghosts feel this one. Your food will not stay hot for long tonight.' },
       { who: 'lantern', text: 'And do not stare at the end of the line. It is rude. Chimaek is staring enough for both of you.' },
-      { who: 'STORY', text: 'A carp of clear ice floats there, upright and very still. It says nothing. The snow around it does not fall.' },
+      { who: 'STORY', text: 'A carp of clear ice floats there in the air, very still. It says nothing. The snow around it does not fall.' },
       {
         choice: [
           { text: 'It waits in line like everyone.', effect: { rel: 1, flag: 'ice_wait' },
@@ -473,7 +473,7 @@ export const SCENES = [
       { who: 'STORY', if: 'scarf_warmed', text: 'The red scarf hangs by the stove, dry and warm. Eoreum looks at it for a long time.' },
       { who: 'STORY', if: 'scarf_kept', text: 'The red scarf lies by the bell. Chimaek has slept on it all week.' },
       { who: 'ice', if: 'scarf_returned', text: '...You gave the river her scarf. ...I kept it. ...As warm as I could.' },
-      { who: 'STORY', text: 'Eoreum eats slowly. With every spoonful a little frost falls away from it, and the crack down its side closes.' },
+      { who: 'STORY', text: 'Eoreum eats slowly. With every spoonful a little frost falls away from it, and the crack under its eye closes.' },
       { who: 'ice', text: '...It tastes like her. ...Like the first winter. ...Like being expected.' },
       { who: 'ice', text: '...Now what, keeper?' },
       {

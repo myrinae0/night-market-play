@@ -17,10 +17,12 @@ import {
 import { drawParts, drawFloats, bounceAmt } from './fx.js';
 import {
   hit, src, dst, setTrayBox, button, label, arrowIcon, binIcon, wrap, withOrigin, withClip, meter, meterLegend, sparkle, inGold, ZONE,
+  PATTERNS, stateIcon, zonePattern,
 } from './ui.js';
 import { LAY } from './layout.js';
 import { accepts, dragHint, findTarget } from './drag.js';
 import { SPIRITS, isSpirit } from './spirits.js';
+import { TIP_TEXT } from './tips.js';
 import * as G from './game.js';
 
 export const SCENE_H = 158; // top part: market + guests
@@ -64,6 +66,12 @@ function strand(t, y0, sag, phase, w) {
     }
   }
 }
+// Where the paper lanterns hang across a street `w` wide: every 80 px on the
+// near string, and four more every 180 px on festival nights. Each is about
+// 11 x 18 (`LANTERN_BOX`: the string above, the glow, the tassel below).
+export const marketLanterns = (w) => { const a = []; for (let x = 40; x < w - 8; x += 80) a.push([x, x % 160 === 40 ? 50 : 52]); return a; };
+export const festivalLanterns = (w) => { const a = []; for (let ox = 0; ox < w; ox += 180) for (const [x, y] of [[14, 62], [66, 64], [96, 60], [150, 62]]) if (ox + x < w - 6) a.push([ox + x, y]); return a; };
+export const LANTERN_BOX = (x, y) => ({ x: x - 3, y: y - 4, w: 13, h: 18 }); // with a pixel of sway each side
 function lantern(x, y, t) {
   x += Math.round(Math.sin(t * 1.5 + x) * 1);
   R(x + 3, y - 4, 1, 4, C.ink);
@@ -164,14 +172,16 @@ export function drawMarket(t, opts = {}, S = LAY.scene) {
   R(0, cy - 14, w, 16, '#231a30');
   for (let x = 0; x < w; x += 12) R(x, cy - 9, 8, 1, '#2d2240');
   strand(t, 30, 16, 0, w);
-  for (let x = 40; x < w - 8; x += 80) lantern(x, x % 160 === 40 ? 50 : 52, t);
+  // `opts.lanterns` / `opts.festLanterns` (the title) replace the default
+  // places, so nothing hangs behind the title's sign and goals board.
+  for (const [x, y] of opts.lanterns || marketLanterns(w)) lantern(x, y, t);
   strand(t, 22, 8, 4, w);
   if (opts.festival) {
-    const mx = w - 40;
+    const mx = opts.moonX ?? w - 40; // (the title moves it clear of its sign)
     R(mx, 30, 15, 15, C.night1); R(mx + 1, 29, 13, 17, C.night1); // a full moon
     R(mx + 1, 31, 13, 13, C.cream); R(mx + 2, 30, 11, 15, C.cream); R(mx + 6, 34, 3, 2, mix(C.cream, C.grey, 0.4)); R(mx + 4, 39, 2, 2, mix(C.cream, C.grey, 0.4));
     strand(t, 40, 12, 2, w);
-    for (let ox = 0; ox < w; ox += 180) for (const [x, y] of [[14, 62], [66, 64], [96, 60], [150, 62]]) if (ox + x < w - 6) lantern(ox + x, y, t + x);
+    for (const [x, y] of opts.festLanterns || festivalLanterns(w)) lantern(x, y, t + (x % 180));
   }
   if (opts.frost) {
     drawSnow(t, S);
@@ -331,6 +341,8 @@ function patienceBar(x, y, w, k, t) {
   const bw = Math.max(0, Math.round((w - 12) * k));
   R(x + 11, y + 1, bw, 4, col);
   R(x + 11, y + 1, bw, 1, mix(col, C.white, 0.4));
+  // Colour patterns: dots when it is half gone, a hatch when it is nearly out.
+  if (PATTERNS && k <= 0.6) zonePattern(k > 0.3 ? 'good' : 'burnt', x + 11, y + 1, bw, 4);
 }
 const SAUCE_COL = { honey: C.orange, soygarlic: C.woodD, egg: C.orange, scallion: C.greenD, soydip: C.woodD };
 // A regular's mood on the corner of their bubble or ticket: a heart (glad)
@@ -551,11 +563,17 @@ function tabs(app) {
         lockIcon(x + 3, y + 2, cur ? C.greyD : C.greyDD);
         text(lab, x + 14, y + 5, { color: col, outline: cur ? null : C.ink });
       } else lockIcon(x + Math.floor(w / 2) - 4, y + 2, cur ? C.greyD : C.greyD);
-    } else text(lab, x + w / 2, y + 5, { color: col, align: 'center', outline: cur ? null : C.ink });
+    }
     // A dot on another station's tab when food there is good (green), in the
     // gold (gold) or about to burn (blinking red): the meters' colours.
+    // (Colour patterns: the tick, star or X instead of a dot, the name moved
+    // over to make room.)
     const a = !cur && s.status === 'open' && g.phase === 'play' ? stationAlert(g, s.id) : null;
-    if (a && (a !== 'burn' || Math.floor(app.time * 4) % 2)) { R(x + w - 6, y + 1, 5, 4, C.ink); R(x + w - 5, y + 2, 3, 2, a === 'ready' ? ZONE.good : a === 'perfect' ? ZONE.perfect : ZONE.burnt); }
+    if (s.status === 'open') text(lab, x + w / 2 - (a && PATTERNS ? 3 : 0), y + 5, { color: col, align: 'center', outline: cur ? null : C.ink });
+    if (a && (a !== 'burn' || Math.floor(app.time * 4) % 2)) {
+      if (PATTERNS) { stateIcon(a === 'ready' ? 'good' : a === 'perfect' ? 'perfect' : 'burnt', x + w - 6, y + 2, undefined, false); }
+      else { R(x + w - 6, y + 1, 5, 4, C.ink); R(x + w - 5, y + 2, 3, 2, a === 'ready' ? ZONE.good : a === 'perfect' ? ZONE.perfect : ZONE.burnt); }
+    }
     hit(x, y, w, 14, () => app.goStation(i), 'tab', `tab:${s.id}`);
   });
 }
@@ -749,9 +767,11 @@ function grillPanel(app, ox, live) {
     const up = it.sides[1 - it.down], down = it.sides[it.down];
     if (!holding(app, 'grill', i)) drawItem(it.item, mid - 16, gy + 5 + hop - bounceAmt(app.fx, `grill:${i}`), { up, down, scale: 2 });
     const mx = mid - Math.floor(mw / 2);
-    meter(mx, gy + 44, mw, 3, it.sides[0], g.cook.grill, it.down === 0, t);
-    meter(mx, gy + 51, mw, 3, it.sides[1], g.cook.grill, it.down === 1, t);
-    if (grillPerfect(it, g.cook.grill) && !holding(app, 'grill', i)) sparkle(mid + 13, gy + 2, t);
+    meter(mx, gy + 44, mw, 3, it.sides[0], g.cook.grill, it.down === 0, t, false);
+    meter(mx, gy + 51, mw, 3, it.sides[1], g.cook.grill, it.down === 1, t, false);
+    const gp = grillPerfect(it, g.cook.grill);
+    if (PATTERNS && !holding(app, 'grill', i) && (st !== 'raw' || gp)) stateIcon(st === 'burnt' ? 'burnt' : gp ? 'perfect' : 'good', mid + 12, gy + 2);
+    else if (gp && !holding(app, 'grill', i)) sparkle(mid + 13, gy + 2, t);
     const ay = gy + 44 + it.down * 7; // the flame marks the side on the heat
     R(mx - 6, ay - 1, 3, 5, C.orange); R(mx - 5, ay, 1, 3, C.yellow);
     if (drag) {
@@ -1453,4 +1473,69 @@ export function drawGame(app, reg) {
   withOrigin(P.tx, P.ty, () => toastBox(app));
   inScene(() => drawFloats(app.fx));
   hud(app);
+  drawTip(app, reg);
+}
+
+// ---------- first-night tips (src/tips.js) ----------
+// Where a tip points, in screen coordinates (from this frame's registry where
+// the thing is a drag source or a tap target, so both control schemes work).
+export function tipAnchor(app, reg, anchor) {
+  const g = app.g, S = LAY.scene, T = LAY.tray, P = LAY.panel;
+  if (!g || !anchor) return null;
+  const sc = (x, y, w, h) => ({ x: x + S.d, y: y + S.cy - COUNTER_Y, w, h });
+  if (anchor === 'bubble' || anchor === 'patience') {
+    const c = g.line.find((x) => x.phase === 'wait');
+    if (!c) return null;
+    const n = c.order.lines.length;
+    if (queueLevel(g)) {
+      const cx = Math.round(guestX(g, c)), h = 6 + n * 17 + 9;
+      return anchor === 'bubble' ? sc(cx - 25, 29, 50, h) : sc(cx - 22, 29 + h - 8, 44, 6);
+    }
+    const h = 8 + n * 18 + 10;
+    return anchor === 'bubble' ? sc(90, 30, 86, h) : sc(94, 30 + h - 9, 78, 6);
+  }
+  if (anchor === 'serve') return { x: T.tx + HANDLE.x, y: T.ty + HANDLE.y, w: HANDLE.w, h: HANDLE.h };
+  if (anchor === 'box') { const b = boxGeom(); return { x: P.tx + 4, y: P.ty + b.b0, w: 172, h: 64 + b.bx }; }
+  if (anchor.startsWith('tab:')) return reg.hits.find((h) => h.key === anchor) || null;
+  if (anchor.startsWith('item:')) {
+    const id = anchor.slice(5);
+    return reg.sources.find((s) => s.payload && ((s.payload.kind === 'ready' || s.payload.kind === 'bin') && s.payload.item === id || (id === 'kettle' && s.payload.kind === 'kettle')))
+      || reg.hits.find((h) => [`ready:${id}`, `bin:${id}`].includes(h.key) || [`ready:${id}`, `bin:${id}`].includes(h.tag)) || null;
+  }
+  return null;
+}
+// The tip: a gold outline blinking round the thing, and a note beside it
+// (above it in the lower half of the screen, below it in the upper half) with
+// SKIP TIPS. Only SKIP TIPS takes a tap; everything under the note still works.
+export const TIP_W = 104;
+export function drawTip(app, reg) {
+  const tip = app.tip, g = app.g;
+  if (!tip || !g || g.phase !== 'play' || app.slide) return null;
+  const a = tipAnchor(app, reg, tip.anchor);
+  if (!a) return null;
+  const blink = Math.floor(app.time * 3) % 2;
+  R(a.x - 2, a.y - 2, a.w + 4, 1, blink ? C.yellow : C.gold); R(a.x - 2, a.y + a.h + 1, a.w + 4, 1, blink ? C.yellow : C.gold);
+  R(a.x - 2, a.y - 2, 1, a.h + 4, blink ? C.yellow : C.gold); R(a.x + a.w + 1, a.y - 2, 1, a.h + 4, blink ? C.yellow : C.gold);
+  const lines = wrap(tip.text, TIP_W - 8);
+  const skipW = tw(TIP_TEXT.skip) + 8;
+  const w = TIP_W, h = 6 + lines.length * 7 + 12;
+  const cx = a.x + a.w / 2;
+  const below = a.y + a.h / 2 < H / 2;
+  let y = below ? a.y + a.h + 6 : a.y - h - 6;
+  y = Math.max(16, Math.min(H - h - 2, Math.round(y)));
+  const x = Math.round(Math.max(2, Math.min(W - w - 2, cx - w / 2)));
+  rbox(x, y + 1, w, h, C.ink);
+  rbox(x, y, w, h, C.cream, C.gold);
+  // A pointer toward the thing.
+  const px = Math.round(Math.max(x + 4, Math.min(x + w - 7, cx - 1)));
+  {
+    if (below) { R(px, y - 3, 3, 1, C.gold); R(px - 1, y - 2, 5, 2, C.gold); R(px + 1, y - 4, 1, 1, C.gold); }
+    else { R(px - 1, y + h, 5, 2, C.gold); R(px, y + h + 2, 3, 1, C.gold); R(px + 1, y + h + 3, 1, 1, C.gold); }
+  }
+  lines.forEach((l, i) => text(l, x + w / 2, y + 4 + i * 7, { align: 'center', color: C.ink, outline: null }));
+  const bx = x + w - skipW - 3, by = y + h - 11;
+  rbox(bx, by, skipW, 9, C.greyD);
+  text(TIP_TEXT.skip, bx + skipW / 2, by + 2, { align: 'center', color: C.white, outline: null });
+  hit(bx - 2, by - 2, skipW + 4, 13, () => app.skipTips(), 'ui', 'skiptips');
+  return { anchor: a, box: { x, y, w, h } };
 }

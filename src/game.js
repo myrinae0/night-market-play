@@ -48,6 +48,7 @@ export function createGame(levelN, opts = {}) {
     tray: [], trayMax: fx.trayMax,
     cook: cookSpecs(opts.upgrades),
     patienceMul: fx.patienceMul,
+    rushVipMul: fx.rushVipMul, // silk lanterns
     potStaysHot: fx.potStaysHot, // the copper kettle
     relTips: opts.relTips || {},
     moods: def.regulars ? opts.moods || {} : {},
@@ -84,7 +85,7 @@ function arrive(g) {
   const o = g.orders[g.custIdx];
   const sp = typeof o.look === 'string' ? SPIRITS[o.look] : null;
   const mood = (sp && g.moods[o.look]) || null; // a regular remembers you
-  const p = o.patience * g.patienceMul * (mood ? MOODS[mood].patience : 1);
+  const p = o.patience * g.patienceMul * (mood ? MOODS[mood].patience : 1) * (o.rush || o.vip ? g.rushVipMul || 1 : 1);
   // Queue levels: each guest stands in the leftmost free spot at the counter.
   const used = new Set(g.line.map((c) => c.col));
   let col = 0;

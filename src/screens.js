@@ -11,9 +11,10 @@ import { SCENES, speakerName, afterSceneFor, ENDINGS, ENDING_IDS } from './story
 import { goalDef, BADGES, badgeById } from './goals.js';
 import {
   drawGame, drawMarket, drawRain, awningAndCounter, hud, tapMode, SCENE_H, COUNTER_Y, lidArt, kettleArt, inScene, stallFront, ladleArt,
+  marketLanterns, festivalLanterns, LANTERN_BOX,
 } from './render.js';
 import { drawParts } from './fx.js';
-import { resetRegistry, clearHits, hit, dim, panel, button, toggle, wrap, withOrigin, meter, meterLegend, ZONE } from './ui.js';
+import { resetRegistry, clearHits, hit, dim, panel, button, toggle, wrap, withOrigin, meter, meterLegend, ZONE, stateIcon } from './ui.js';
 import { LAY, wideRight, centerBlock, computeLayout } from './layout.js';
 
 // Wooden floor planks over a screen rect (default: everything below y0).
@@ -66,18 +67,42 @@ export function titleLayout(W, H, mode) {
   const pitch = 41 + Math.max(0, Math.min(12, Math.floor((floor.h - 232) / 5)));
   return { S, floor, pitch, cards: centerBlock(SCENE_H, 390 + 4 * (pitch - 41), floor), board: null };
 }
+// The title's sky, in screen coordinates of the street S: the sign floats top
+// right (a little lower when the sky is taller), the purse under it, and the
+// daily goals board hangs from the sign, right of the guest and above the
+// counter. The paper lanterns keep only the places clear of all of them and
+// the guest, so nothing covers a lantern on any screen (tests/batch18).
+const overlaps = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+export function titleSky(S, goals = 3) {
+  const dy = S.cy - COUNTER_Y, hang = Math.floor(dy / 2), d = S.d;
+  const sign = { x: d + 84, y: 30 + hang, w: 92, h: 48 };
+  const purse = { x: d + 108, y: 84 + hang, w: 46, h: 14 };
+  const bh = 13 + Math.max(1, goals) * 7; // the board and its shadow
+  const room = COUNTER_Y + dy - 2 - (purse.y + purse.h);
+  const board = { x: d + 84, y: purse.y + purse.h + Math.max(2, Math.floor((room - bh) / 2)), w: 92, h: bh };
+  const guest = { x: d + 20, y: 72 + dy, w: 64, h: 70 }; // Deung, floating at the counter
+  // The festival's full moon (15 x 17) moves left of the sign if the sign would cover it.
+  const moonAt = (x) => ({ x, y: 29, w: 15, h: 17 });
+  let moon = moonAt(S.w - 40);
+  if (overlaps(moon, sign)) moon = moonAt(sign.x - 22);
+  const clear = [sign, purse, board, guest, moon];
+  const free = (list) => list.filter(([x, y]) => !clear.some((r) => overlaps(LANTERN_BOX(x, y), r)));
+  return { sign, purse, board, guest, moon, lanterns: free(marketLanterns(S.w)), festLanterns: free(festivalLanterns(S.w)) };
+}
 function titleScreen(app) {
   const t = app.time;
   const { S, floor, cards, pitch, board } = titleLayout(W, H, LAY.mode);
-  drawMarket(t, { festival: isUnlocked(13, app.save.stars) && app.titlePage !== 2, frost: app.titlePage === 2 }, S);
+  const goals = ((app.save.goals && app.save.goals.list) || []).length;
+  const sky = titleSky(S, goals);
+  drawMarket(t, { festival: isUnlocked(13, app.save.stars) && app.titlePage !== 2, frost: app.titlePage === 2, lanterns: sky.lanterns, festLanterns: sky.festLanterns, moonX: sky.moon.x }, S);
   inScene(() => drawCustomer('lantern', 52, COUNTER_Y + 2, { t }), S);
   awningAndCounter(t, { react: 'wag', frost: app.titlePage === 2 }, S, LAY.mode === 'wide' ? S.h : S.cy + 18);
   if (board) { // tonight's menu: the newest night you can play
     const n = Math.max(...LEVELS.filter((L) => isUnlocked(L.n, app.save.stars)).map((L) => L.n));
     stallFront(S, { level: n, def: levelDef(n), time: t }, board);
   }
-  // The sign floats in the sky, halfway between the awning and the guest.
-  withOrigin(S.d, Math.floor((S.cy - COUNTER_Y) / 2), () => {
+  // The sign floats in the sky, the purse under it.
+  withOrigin(sky.sign.x - 84, sky.sign.y - 30, () => {
     rbox(84, 32, 92, 46, C.ink);
     rbox(84, 30, 92, 46, C.redD);
     R(86, 32, 88, 1, C.red);
@@ -88,9 +113,9 @@ function titleScreen(app) {
     coinIcon(112, 87);
     text(String(app.save.wallet), 122, 88, { color: C.yellow });
   }, [80, 26, 180, 100]);
-  // The daily goals hang from the awning, left of the sign (tap: goals and badges).
-  const hang = Math.floor((S.cy - COUNTER_Y) / 2);
-  withOrigin(S.d, hang, () => goalsBoard(app, 3, 27, 78, hang), [0, 26, 82, 64]);
+  // The daily goals hang from the sign, right of the guest (tap: goals and badges).
+  const b = sky.board;
+  withOrigin(b.x - 84, b.y - 100, () => goalsBoard(app, 84, 100, 92, b.y - (sky.sign.y + 46) - 2), [84, 98, 180, 140]);
   woodFloor(floor.y, floor.x, floor.w);
   if (LAY.mode === 'wide') { R(floor.x - 3, 14, 3, H - 14, C.woodD); R(floor.x - 2, 14, 1, H - 14, C.wood); R(floor.x - 4, 14, 1, H - 14, C.ink); }
   withOrigin(cards.dx, cards.dy, () => titleCards(app, pitch), [0, SCENE_H, 180, 390 + 4 * (pitch - 41)]);
@@ -517,34 +542,36 @@ function logScreen(app) {
 }
 
 // ---------- shop ----------
-const UP_ART = { grill4: 'galbi', tray5: 'kimbap', fastfry: 'chicken', patience: 'lantern', wokfast: 'friedrice', steam3: 'mandu', kettle: 'kettle', ironpot: 'ironpot', soup2: 'soup2' };
-// Portrait: the upgrades in three pages (PART 1: the first five; PART 2: the
-// steamer and noodle pot ones; PART 3: the soup pot ones), one column each.
-// Wide: two pages, parts 1 and 2 together (two columns of four), then part 3.
+const UP_ART = {
+  grill4: 'galbi', tray5: 'kimbap', fastfry: 'chicken', patience: 'lantern', wokfast: 'friedrice', steam3: 'mandu', kettle: 'kettle', ironpot: 'ironpot', soup2: 'soup2',
+  steamfast: 'bun', potfast: 'ramyeon', silk: 'silk',
+};
+// Three pages, PART 1 (the first five), PART 2 (the steamer, noodle pot and
+// rush ones) and PART 3 (the soup pot ones): one column of five on a phone,
+// two columns (three and two) side by side.
 const partOf = (u) => (!u.from ? 1 : u.from <= 13 ? 2 : 3);
 export const SHOP_PAGES = [1, 2, 3].map((p) => UPGRADES.filter((u) => partOf(u) === p).map((u) => u.id));
-export const WIDE_SHOP_PAGES = [UPGRADES.filter((u) => partOf(u) < 3).map((u) => u.id), SHOP_PAGES[2]];
-export const shopPages = (wide) => (wide ? WIDE_SHOP_PAGES : SHOP_PAGES);
+export const SHOP_PER_PAGE = 5;
+export const shopPages = () => SHOP_PAGES;
 export function shopCardBox(i, wide) {
-  return wide ? { x: 6 + Math.floor(i / 4) * 176, y: 60 + (i % 4) * 44, w: 168, h: 42 } : { x: 6, y: 74 + i * 46, w: 168, h: 42 };
+  return wide ? { x: 6 + Math.floor(i / 3) * 176, y: 74 + (i % 3) * 44, w: 168, h: 42 } : { x: 6, y: 74 + i * 46, w: 168, h: 42 };
 }
 // The page that opens first: the newest part with an upgrade that is open and
-// not owned yet, else part 1. (Wide: part 3 is its second page.)
-export function defaultShopPage(save, wide = LAY.mode === 'wide') {
+// not owned yet, else part 1.
+export function defaultShopPage(save) {
   const fresh = UPGRADES.filter((u) => u.from && upgradeOpen(u, save.stars) && !save.upgrades[u.id]).map(partOf);
-  const part = fresh.length ? Math.max(...fresh) : 1;
-  return wide ? (part === 3 ? 1 : 0) : part - 1;
+  return (fresh.length ? Math.max(...fresh) : 1) - 1;
 }
 function shopScreen(app) {
   const s = app.save, t = app.time, wide = isWide();
   R(0, 0, W, H, C.night0);
   for (let y = 0; y < H; y += 4) R(0, y, W, 1, C.night1);
   for (let x = 0; x < W; x += 10) { const c = (x / 10) % 2 ? C.cream : C.green; R(x, 14, 10, 8, c); R(x + 1, 22, 8, 2, c); }
-  const pages = shopPages(wide);
+  const pages = shopPages();
   const page = Math.min(app.shopPage || 0, pages.length - 1);
   const shown = UPGRADES.filter((u) => pages[page].includes(u.id));
   const bw = wide ? 352 : 180;
-  const y0 = wide ? 60 + 4 * 44 + 4 : 74 + SHOP_PAGES[0].length * 46 + 4;
+  const y0 = wide ? 74 + 3 * 44 + 4 : 74 + SHOP_PER_PAGE * 46 + 4;
   const bh = wide ? y0 + 56 : 390;
   const dx = Math.floor((W - bw) / 2), dy = Math.max(0, Math.floor((H - bh) / 2));
   withOrigin(dx, dy, () => {
@@ -553,19 +580,11 @@ function shopScreen(app) {
     rbox(cx - 26, 41, 52, 13, C.ink);
     coinIcon(cx - 22, 44);
     text(String(s.wallet), cx - 12, 45, { color: C.yellow });
-    if (!wide) {
-      ['PART 1', 'PART 2', 'PART 3'].forEach((lab, i) => {
-        const on = page === i;
-        button(6 + i * 58, 57, 54, 13, lab, on ? C.redD : C.greyDD, () => app.setShopPage(i), 'ui', 'small', `shoppage:${i + 1}`);
-        if (on) R(10 + i * 58, 70, 46, 1, C.gold);
-      });
-    } else { // two pages side by side: parts 1 and 2, then part 3
-      ['PARTS 1 AND 2', 'PART 3'].forEach((lab, i) => {
-        const on = page === i, bx = i ? cx + 34 : cx - 34 - 84;
-        button(bx, 41, 84, 13, lab, on ? C.redD : C.greyDD, () => app.setShopPage(i), 'ui', 'small', `shoppage:${i + 1}`);
-        if (on) R(bx + 4, 54, 76, 1, C.gold);
-      });
-    }
+    ['PART 1', 'PART 2', 'PART 3'].forEach((lab, i) => {
+      const on = page === i, bx = cx - 87 + i * 58;
+      button(bx, 57, 54, 13, lab, on ? C.redD : C.greyDD, () => app.setShopPage(i), 'ui', 'small', `shoppage:${i + 1}`);
+      if (on) R(bx + 4, 70, 46, 1, C.gold);
+    });
     shown.forEach((u, i) => {
       const { x, y, w, h } = shopCardBox(i, wide);
       const owned = !!s.upgrades[u.id];
@@ -594,13 +613,24 @@ function shopScreen(app) {
           for (let k = 0; k < 2; k++) R(px + 3 + k * Math.floor(pw / 2), py - 3 - (Math.floor(t * 4 + k) % 2), 1, 2, C.white);
         }
         if (u.id === 'ironpot') ladleArt(x + 10, y + 1);
+      } else if (u.id === 'silk') { // two red silk lanterns on a string
+        R(x + 5, y + 8, 32, 1, C.greyD);
+        for (const [lx, ly] of [[x + 9, y + 12], [x + 23, y + 15]]) {
+          R(lx + 3, ly - 3, 1, 3, C.ink); R(lx, ly, 9, 13, C.ink); R(lx - 1, ly + 2, 11, 9, C.ink);
+          R(lx, ly + 1, 9, 11, C.red); R(lx, ly + 3, 9, 1, C.gold); R(lx, ly + 8, 9, 1, C.gold); R(lx + 2, ly + 2, 1, 7, C.redL);
+          R(lx + 3, ly + 12, 3, 2 + (Math.floor(t * 2 + lx) % 2), C.gold);
+        }
+      } else if (u.id === 'steamfast') { // a bamboo lid over a bun, steam rising fast
+        drawItem('bun', x + 5, y + 9, { scale: 2 });
+        R(x + 6, y + 6, 30, 5, C.ink); R(x + 7, y + 6, 28, 4, '#c9a46a'); R(x + 7, y + 6, 28, 1, '#e4c890'); R(x + 19, y + 4, 4, 2, C.ink);
+        for (let k = 0; k < 3; k++) R(x + 9 + k * 9, y + 2 - (Math.floor(t * 6 + k) % 3), 1, 2, C.white);
       } else drawItem(UP_ART[u.id], x + 5, y + 5, { scale: 2 });
       if (!open) { // not yet: it comes with its station
         R(x + 4, y + 4, 34, 34, mix(C.night1, C.greyDD, 0.55));
         lockIcon(x + 16, y + 15, C.greyD);
         text(u.name, x + 43, y + 6, { color: C.greyD, outline: null });
         text(`OPENS WITH LEVEL ${u.from}`, x + 43, y + 15, { color: C.greyD, outline: null });
-        text(`THE ${STATIONS[u.station].name.toUpperCase()}`, x + 43, y + 28, { color: C.greyD, outline: null });
+        text(u.station ? `THE ${STATIONS[u.station].name.toUpperCase()}` : u.with || '', x + 43, y + 28, { color: C.greyD, outline: null });
         return;
       }
       text(u.name, x + 43, y + 6, { color: C.ink, outline: null });
@@ -627,9 +657,9 @@ function shopScreen(app) {
 // Three volume sliders (music, ambience, sound effects), the tap controls
 // switch, mute and resume, and, set apart at the bottom, RESET PROGRESS (it
 // asks first). Only its own tap targets are live while it is open.
-export const SET_Y = 54;
-export const SET_H = 256;
-export const RESET_BTN = { x: 34, y: SET_Y + 222, w: 112, h: 16 };
+export const SET_Y = 50;
+export const SET_H = 300;
+export const RESET_BTN = { x: 34, y: SET_Y + 266, w: 112, h: 16 };
 export const SLIDER = { x: 24, w: 132 };
 export const SLIDER_ROWS = { music: SET_Y + 32, amb: SET_Y + 62, sfx: SET_Y + 92 };
 function slider(key, labelStr, v, y) {
@@ -666,10 +696,22 @@ function settingsCard(app) {
   toggle(SLIDER.x + SLIDER.w - 24, ty, tapMode(app));
   text(tapMode(app) ? 'TAP A BIN, THEN A STATION' : 'OFF: DRAG FOOD WITH A FINGER', SLIDER.x, ty + 15, { color: C.greyD, outline: null });
   hit(x + 4, ty - 4, w - 8, 28, () => app.toggleTapControls(), 'ui', 'tapcontrols');
-  button(SLIDER.x, SET_Y + 156, SLIDER.w, 18, app.muted ? 'SOUND: MUTED' : 'SOUND: ON', app.muted ? C.redD : C.steelD, () => app.toggleMute(), 'ui', 'small', 'sound');
-  button(SLIDER.x, SET_Y + 182, SLIDER.w, 18, app.g && app.g.phase === 'play' && app.screen === 'game' ? 'RESUME' : 'DONE', C.greenD, () => app.closeSettings(), 'ui', 'small', 'resume');
+  // Colorblind mode: shapes on every colour signal (tick, star, X, snowflake).
+  const cy = SET_Y + 152, cb = !!app.save.patterns;
+  text('COLORBLIND MODE', SLIDER.x, cy + 2, { font: 'big', color: C.ink, outline: null });
+  toggle(SLIDER.x + SLIDER.w - 24, cy, cb);
+  if (cb) {
+    let ix = SLIDER.x;
+    for (const [k, word] of [['good', 'GOOD'], ['perfect', 'PERFECT'], ['burnt', 'BURNT'], ['cold', 'COLD']]) {
+      stateIcon(k, ix + 1, cy + 15); text(word, ix + 8, cy + 15, { color: C.greyD, outline: null }); ix += 10 + tw(word) + 4;
+    }
+  } else text('OFF: COLORS ONLY. ON: SHAPES TOO', SLIDER.x, cy + 15, { color: C.greyD, outline: null });
+  hit(x + 4, cy - 4, w - 8, 28, () => app.togglePatterns(), 'ui', 'patterns');
+  button(SLIDER.x, SET_Y + 180, SLIDER.w, 16, 'SHOW TIPS AGAIN', C.purple, () => app.showTipsAgain(), 'ui', 'small', 'showtips');
+  button(SLIDER.x, SET_Y + 202, SLIDER.w, 18, app.muted ? 'SOUND: MUTED' : 'SOUND: ON', app.muted ? C.redD : C.steelD, () => app.toggleMute(), 'ui', 'small', 'sound');
+  button(SLIDER.x, SET_Y + 226, SLIDER.w, 18, app.g && app.g.phase === 'play' && app.screen === 'game' ? 'RESUME' : 'DONE', C.greenD, () => app.closeSettings(), 'ui', 'small', 'resume');
   // Danger zone: a gap and a dashed red rule keep it away from RESUME.
-  for (let dx = x + 8; dx < x + w - 8; dx += 4) R(dx, SET_Y + 212, 2, 1, C.redL);
+  for (let dx = x + 8; dx < x + w - 8; dx += 4) R(dx, SET_Y + 256, 2, 1, C.redL);
   const b = RESET_BTN;
   button(b.x, b.y, b.w, b.h, RESET_TEXT.button, C.red, () => app.askReset(), 'ui', 'small', 'reset');
   text(RESET_TEXT.note, 90, b.y + b.h + 5, { align: 'center', color: C.greyD, outline: null });

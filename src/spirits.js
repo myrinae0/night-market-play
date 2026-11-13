@@ -142,7 +142,7 @@ export const SPIRITS = {
   // of the line (levels 14 and 19); scripted, never by chance.
   ice: {
     name: 'EOREUM', kind: 'THE LONG WINTER', from: 14, patience: 1.6, enter: 2.4, dog: 'stare', float: true, scripted: true,
-    look: 'A carp of clear river ice, floating upright. Icicle fins, a crown of frost, and a crack down one side.',
+    look: 'A carp of clear river ice, floating in the air. Icicle fins, a forked tail, a crown of frost, and a crack under one eye like a tear.',
     memories: [
       { text: '...Warm. ...I forgot what warm was.' },
       { if: 'frost_who', text: '...You asked my name, that night. ...Nobody asks winter its name.', alt: '...She is gone. ...I knew. ...I waited anyway.' },

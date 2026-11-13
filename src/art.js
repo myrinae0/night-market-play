@@ -220,29 +220,31 @@ export const SPIRIT_ART = {
     ]],
   },
   // Eoreum (part 3): the river in winter, an original design. A carp of
-  // clear river ice floating upright: a crown of frost crystals, dark round
-  // eyes with a glint, icicle fins and a forked tail; a crack runs down its
-  // right side (it closes as it eats in the finale). Dark navy outline, as the
-  // ice has no brown in it.
+  // clear river ice, seen side on and floating in the air, facing the line:
+  // a long body with a checker of scales, a crown of frost crystals on its
+  // head, one dark round eye with a glint, an open mouth with a barbel,
+  // icicle fins (dorsal and one hanging pectoral) and a forked tail. A crack
+  // runs down from under its eye like a tear (it closes as it eats in the
+  // finale). Dark navy outline, as the ice has no brown in it.
   ice: {
-    pal: { k: '#22305a', i: '#d4ecff', I: '#9cc8f0', d: '#6a94c8', w: '#ffffff', e: '#16203e', g: '#eaf6ff', c: '#5a7ab8', f: '#f2f8ff' },
+    pal: { k: '#22305a', i: '#d4ecff', I: '#9cc8f0', d: '#6a94c8', w: '#ffffff', e: '#16203e', g: '#bfe0ff', c: '#34508e', f: '#f2f8ff' },
     frames: [[
-      '.......ff.......',
-      '.....f.ff.f.....',
-      '.....kkkkkk.....',
-      '....kiiwwiik....',
-      '...kiwiiiiiIk...',
-      '...kigeiigeIk...',
-      '...kieeiieeIk...',
-      '.kkkiiiiiicIkkk.',
-      'kIdkiiieeicIkdIk',
-      '.kdkiiiiicIIkdk.',
-      '..k.kiiiicIk.k..',
-      '....kiiiIIdk....',
-      '.....kiIIdk.....',
-      '......kIdk......',
-      '....kIk..kdk....',
-      '....kk....kk....',
+      '................',
+      '....f...........',
+      '..f.f.f.k.......',
+      '..gfgfgkdk.....k',
+      '..kkkkkkdkk..kdk',
+      '.kiiiiwwiiikkddk',
+      '.kiewiiiiiwiddk.',
+      'kiieeiIIiIiidk..',
+      'keIciiIiIiIidk..',
+      'dkIcIIIIiIiIddk.',
+      'd.kIcddIIIIkkddk',
+      '...kkddkkkk..kdk',
+      '.....kdk.......k',
+      '......k.........',
+      '................',
+      '................',
     ]],
   },
 };
@@ -315,24 +317,26 @@ export const FOOD_ART = {
       '................',
     ],
   },
-  // Japchae: glossy brown noodles, carrot, spinach, mushroom, sesame.
+  // Japchae: a mound of glossy glass noodles (light and dark strands) with
+  // carrot, spinach and egg, on a small white plate, so it reads as noodles
+  // at the order bubble's size (redrawn Nov 13; it was a brown blob).
   japchae: {
-    pal: { k: OL, n: '#9a5a32', h: '#c88a52', o: '#f77622', g: '#3e8948', m: '#5a3a2a', w: '#fbf6ea' },
+    pal: { k: '#3a2229', n: '#6e3a1c', h: '#d8a060', m: '#a8683a', o: '#f77622', g: '#3e8948', y: '#fee761', p: '#f4f0e8', P: '#c8c0b0' },
     rows: [
       '................',
       '................',
       '................',
-      '.....kkkkkk.....',
-      '...kkhnnhngkk...',
-      '..khnnogwnhnnk..',
-      '.khnhnnnnnmnhnk.',
-      '.knnwhnoghnnnnk.',
-      'khngnnhnnnwhnonk',
-      'knhnmnnhognnhnnk',
-      'knnnhnwnnnhnnmnk',
-      '.knhnnognhnwnnk.',
-      '..kknnnhnnnnkk..',
-      '....kkkkkkkk....',
+      '......kkkk......',
+      '....kkhmnhkk....',
+      '...khmnhmgnhk...',
+      '..khnhmnhmnhmk..',
+      '..kmohnhmnhmok..',
+      '.khmnhmnyhmnhmk.',
+      '.knhmgnhmnhmnhk.',
+      'kphmnhmonhmnhmpk',
+      'kppkkkkkkkkkkppk',
+      '.kPppppppppppPk.',
+      '..kkkkkkkkkkkk..',
       '................',
       '................',
     ],
@@ -363,10 +367,8 @@ export const FOOD_ART = {
 };
 
 // ---------- part 2: noodle pot and dips ----------
-// Mandu and the steamed bun are the food pack's own "dumpling" and "mochi"
-// sprites (assets.js; their raw dough is a recolour made at run time). The
-// pack has no ramyeon or dip dishes, so these are drawn here on the pack's
-// own soup bowl: its outline (#42393d), its cream bowl colours and shape.
+// The pack has no ramyeon or dip dishes, so these are drawn here on the
+// pack's own soup bowl: its outline (#42393d), its cream bowl colours and shape.
 const PACK = { a: '#42393d', b: '#e7daa8', c: '#efeadb', d: '#daca81' };
 Object.assign(FOOD_ART, {
   // Raw ramyeon: a block of instant noodles, wavy, golden.
@@ -537,6 +539,79 @@ Object.assign(FOOD_ART, {
       '................',
       '................',
       '................',
+      '................',
+    ],
+  },
+});
+
+// ---------- small icons that read at the order bubble's size (Nov 13) ----------
+// The pack's "dumpling" looked like a garlic bulb at 1x (and like the soy
+// garlic sauce), its "mochi" like an onion and its "chicken nuggets" like
+// mushrooms, so these are drawn for the game in the pack's style instead:
+// mandu as a pleated half-moon, the steamed bun as a dome on its square of
+// paper with a red stamp, fried chicken as a golden, crumbed drumstick (the
+// pack's raw drumstick shape). Raw dough is still a recolour (sprites.js).
+Object.assign(FOOD_ART, {
+  mandu: {
+    pal: { k: '#4a3220', w: '#f2e8cc', h: '#fffaf0', s: '#d8c494', d: '#b8a06a', p: '#faf3dc' },
+    rows: [
+      '................',
+      '................',
+      '................',
+      '................',
+      '......kkkk......',
+      '....kkpkpkkk....',
+      '...kpdpdpdpdk...',
+      '..khwdwdwdwdsk..',
+      '.khwwwwwwwwwwsk.',
+      '.kwhwwwwwwwwssk.',
+      'kwwwwwwwwwwwsssk',
+      'ksswwwwwwwwssssk',
+      '.kssssssssssssk.',
+      '..kkkkkkkkkkkk..',
+      '................',
+      '................',
+    ],
+  },
+  bun: {
+    pal: { k: '#42393d', w: '#efeadb', h: '#ffffff', s: '#daca81', c: '#e7daa8', r: '#d8333f', R: '#9e2835', p: '#f8f4ea', P: '#d8d0bc' },
+    rows: [
+      '................',
+      '................',
+      '................',
+      '......kkkk......',
+      '....kkhhwwkk....',
+      '...khhwwwwwck...',
+      '..khwwwrrwwwck..',
+      '..kwwwwrRwwwck..',
+      '.khwwwwwwwwwcsk.',
+      '.kwwwwwwwwwccsk.',
+      '.kcwwwwwwwwcssk.',
+      '.kccwwwwwwcsssk.',
+      '.kkccccccsssskk.',
+      'kPPkkkkkkkkkkPPk',
+      '.kkkkkkkkkkkkkk.',
+      '................',
+    ],
+  },
+  chicken: {
+    pal: { k: '#5a3214', c: '#f4ead2', d: '#cdbb98', y: '#f8cc6a', g: '#e09a3c', G: '#b8692a' },
+    rows: [
+      '................',
+      '...........kkk..',
+      '..........kccck.',
+      '.........kccdck.',
+      '........kkcddk..',
+      '.....kkkgkcdk...',
+      '...kkygygkkk....',
+      '..kyggyggGk.....',
+      '..kgygggygGk....',
+      '.kyggygggGGk....',
+      '.kgygggyggGk....',
+      '.kggyggggGGk....',
+      '.kGgggygGGk.....',
+      '..kGGGGGGk......',
+      '...kkkkkk.......',
       '................',
     ],
   },

@@ -133,7 +133,16 @@ export const TRAY_MAX = 4;
 // accepted, but a cold line pays `coldPay` of its price, loses its perfect
 // bonus, and the guest's tip is `coldTip` as big. Drinks, kimbap and toast
 // never cool. `help` nights (the whole market helps) cool `helpMul` as fast.
-export const WINTER = { coolTime: 25, coldPay: 0.5, coldTip: 0.5, helpMul: 0.5 };
+// Batch 18 tuning (tools/winter-sim.js): the test bots cook one order at a
+// time, so at 25 s nobody's food ever went cold and the winter did not push
+// at all. Now it cools in 20 s (the bar drains faster: be quick), and a cold
+// line pays 75% (was 50%), so cold food stings less when it happens.
+export const WINTER = { coolTime: 20, coldPay: 0.75, coldTip: 0.5, helpMul: 0.5 };
+// Part 3 nights also cap the garnish (`sauceCap`: the share of guests who may
+// ask for a sauce or topping; logic.js makeOrders), so a night is never mostly
+// garnish on top of the cold: nights 17 and 19 had 10 of 13 and 9 of 12
+// garnished orders, and a player who skips toppings got no star there.
+export const WINTER_SAUCE_CAP = 0.5;
 
 // Levels. `kind`: 'station' introduces a new station, 'mix' juggles what you
 // know, 'queue' has a line of customers, 'festival' is the lantern festival
@@ -263,7 +272,7 @@ export const LEVELS = [
   // `winter`: frost, and food on the tray cools (WINTER). `last` (with
   // `lastOrder`) is a guest who waits at the end of the line all night.
   {
-    n: 14, tag: 'FROST: FOOD COOLS', title: 'First frost', kind: 'mix', preview: 'winter', queue: 3, guest: 'lantern', winter: true, regulars: true, treat: true,
+    n: 14, sauceCap: WINTER_SAUCE_CAP, tag: 'FROST: FOOD COOLS', title: 'First frost', kind: 'mix', preview: 'winter', queue: 3, guest: 'lantern', winter: true, regulars: true, treat: true,
     last: 'ice', lastOrder: [{ item: 'bun', sauce: null }], stations: ['counter', 'grill', 'fryer', 'wok', 'steamer', 'pot'], customers: 12, seed: 1414,
     intro: {
       station: 'counter',
@@ -273,7 +282,7 @@ export const LEVELS = [
     },
   },
   {
-    n: 15, tag: 'SLEET + SPECIAL', title: 'The scarf', kind: 'mix', queue: 3, guest: 'frog', winter: true, rain: true, regulars: true, treat: true, special: 'bun',
+    n: 15, sauceCap: WINTER_SAUCE_CAP, tag: 'SLEET + SPECIAL', title: 'The scarf', kind: 'mix', queue: 3, guest: 'frog', winter: true, rain: true, regulars: true, treat: true, special: 'bun',
     stations: ['counter', 'grill', 'fryer', 'wok', 'steamer', 'pot'], customers: 13, seed: 1515,
     intro: {
       station: 'steamer',
@@ -283,7 +292,7 @@ export const LEVELS = [
     },
   },
   {
-    n: 16, title: 'Soup pot', kind: 'station', guest: 'moth', winter: true, regulars: true, treat: true, stations: STATION_ORDER, customers: 9, seed: 1616,
+    n: 16, sauceCap: WINTER_SAUCE_CAP, title: 'Soup pot', kind: 'station', guest: 'moth', winter: true, regulars: true, treat: true, stations: STATION_ORDER, customers: 9, seed: 1616,
     intro: {
       station: 'soup',
       heading: 'NEW: THE SOUP POT',
@@ -292,7 +301,7 @@ export const LEVELS = [
     },
   },
   {
-    n: 17, tag: 'EVERY STATION', title: 'Cold hands', kind: 'mix', queue: 3, guest: 'clay', winter: true, regulars: true, treat: true, stations: STATION_ORDER, customers: 13, seed: 1717,
+    n: 17, sauceCap: WINTER_SAUCE_CAP, tag: 'EVERY STATION', title: 'Cold hands', kind: 'mix', queue: 3, guest: 'clay', winter: true, regulars: true, treat: true, stations: STATION_ORDER, customers: 13, seed: 1717,
     intro: {
       station: 'soup',
       heading: 'SEVEN STATIONS',
@@ -301,7 +310,7 @@ export const LEVELS = [
     },
   },
   {
-    n: 18, tag: 'EVERYONE HELPS', title: 'The whole market', kind: 'mix', preview: 'help', queue: 3, guest: 'fox', winter: true, help: true, regulars: true, treat: true, special: 'tteokguk',
+    n: 18, sauceCap: WINTER_SAUCE_CAP, tag: 'EVERYONE HELPS', title: 'The whole market', kind: 'mix', preview: 'help', queue: 3, guest: 'fox', winter: true, help: true, regulars: true, treat: true, special: 'tteokguk',
     busy: true, stations: STATION_ORDER, customers: 15, seed: 1818,
     intro: {
       station: 'counter',
@@ -311,7 +320,7 @@ export const LEVELS = [
     },
   },
   {
-    n: 19, tag: 'THE FINALE', title: 'One more bowl', kind: 'finale', preview: 'finale', queue: 3, guest: 'rabbit', winter: true, regulars: true, treat: true,
+    n: 19, sauceCap: 0.4, tag: 'THE FINALE', title: 'One more bowl', kind: 'finale', preview: 'finale', queue: 3, guest: 'rabbit', winter: true, regulars: true, treat: true,
     last: 'ice', lastOrder: [{ item: 'tteokguk', sauce: 'egg' }], stations: STATION_ORDER, customers: 12, seed: 1919,
     intro: {
       station: 'soup',
@@ -399,11 +408,12 @@ export const PERSON_SHARE = 0.22; // now and then a normal person comes by
 // whole run. A flawless run of levels 1-6 earns about 1080 coins and the five
 // part 1 upgrades cost 1540, so a good player (about 85% of the best) buys
 // the first one or two along the way and the last of those around levels 8
-// to 10. The steamer and noodle pot upgrades (`from`: they show up in the
-// shop once their station's level is open) bring the total to 2280: a good
-// player has bought everything around levels 12 to 13. The two soup pot
-// upgrades (part 3, from level 16) add 940: a good player has them both by
-// level 17 (not by 16).
+// to 10. The part 2 upgrades (`from`: they show up in the shop once their
+// station's level is open; the silk lanterns with the rush on 12) bring the
+// total to 3060: a good player has bought everything from parts 1 and 2
+// around level 16 (not by 15). The two soup pot upgrades (part 3, from level
+// 16) add 940: a good player owns every upgrade by level 19 (not by 18).
+// (Before batch 18 parts 1 and 2 cost 2280, all done around levels 12 to 13.)
 // Levels are tuned to be beatable with none; with all of them a careless
 // night (no sauces) still earns only one star (tests/upgrades.test.js).
 export const UPGRADES = [
@@ -414,6 +424,11 @@ export const UPGRADES = [
   { id: 'wokfast', name: 'SEASONED WOK', desc: 'DISHES NEED FEWER TOSSES', cost: 240 },
   { id: 'steam3', name: '3RD STEAM BASKET', desc: 'STEAM THREE AT ONCE', cost: 380, from: 7, station: 'steamer' },
   { id: 'kettle', name: 'COPPER KETTLE', desc: 'FAST BOIL, THE POT STAYS HOT', cost: 360, from: 10, station: 'pot' },
+  // Part 2, batch 18 (Nov 13): one more for each part 2 station and one for
+  // the rush and the VIPs.
+  { id: 'steamfast', name: 'BAMBOO LIDS', desc: 'STEAMS 20% FASTER', cost: 240, from: 7, station: 'steamer' },
+  { id: 'potfast', name: 'BRASS NOODLE POT', desc: 'RAMYEON COOKS 20% FASTER', cost: 240, from: 10, station: 'pot' },
+  { id: 'silk', name: 'SILK LANTERNS', desc: 'RUSH, VIPS WAIT 25% LONGER', cost: 300, from: 12, with: 'THE RUSH' },
   // Part 3: the soup pot.
   { id: 'ironpot', name: 'IRON SOUP POT', desc: 'STICKS LESS: STIR HALF AS OFTEN', cost: 420, from: 16, station: 'soup' },
   { id: 'soup2', name: '2ND SOUP POT', desc: 'TWO BOWLS AT ONCE', cost: 520, from: 16, station: 'soup' },
@@ -421,6 +436,10 @@ export const UPGRADES = [
 // The copper kettle: water boils this much faster, and after you take the
 // noodles the pot keeps its boiling water for the next ramyeon.
 export const KETTLE_BOIL = 1 / 3;
+// Bamboo lids and the brass noodle pot: steaming / the noodles take this much
+// of the time. Silk lanterns: rush and VIP guests wait this much longer.
+export const FAST_COOK = 0.8;
+export const SILK_PATIENCE = 1.25;
 // The shop opens after you clear this level (then between every night after it).
 export const SHOP_FROM_LEVEL = 5;
 

@@ -96,35 +96,80 @@ export function toggle(x, y, on) {
 // Winter nights add a fourth colour: icy blue = cold (food gone cold on the tray).
 export const ZONE = { raw: C.greyD, good: C.green, perfect: '#ffcd2e', shine: '#fff3a8', burnt: C.red, cold: '#8fd3ff' };
 export const inGold = (p, spec) => p >= spec.perfectLo && p <= spec.perfectHi;
+// Where the needle is: 'raw', 'good', 'perfect' or 'burnt'.
+export function meterState(p, spec) {
+  if (p >= spec.burnt) return 'burnt';
+  if (inGold(p, spec)) return 'perfect';
+  if (p >= spec.done) return 'good';
+  return 'raw';
+}
+
+// ---------- colour patterns (Settings: COLOUR PATTERNS, off by default) ----------
+// For players who can't tell the colours apart, every colour signal also gets
+// a shape: GOOD = dots and a tick, PERFECT = a star, BURNT = a hatch and an
+// X, COLD = a snowflake. The burnt zone's hatch shows in the default look too.
+export let PATTERNS = false;
+export function setPatterns(on) { PATTERNS = !!on; }
+// 5 x 5 shapes, one per state (tests check they all differ).
+export const STATE_ICONS = {
+  good: ['....#', '...##', '#.##.', '###..', '.#...'],
+  perfect: ['..#..', '.###.', '#####', '.###.', '.#.#.'],
+  burnt: ['#...#', '.#.#.', '..#..', '.#.#.', '#...#'],
+  cold: ['#.#.#', '.###.', '##.##', '.###.', '#.#.#'],
+};
+export const STATE_COL = () => ({ good: ZONE.good, perfect: ZONE.perfect, burnt: ZONE.burnt, cold: ZONE.cold });
+// A state's shape at (x, y), 5 x 5, in `col` (default: its colour), on an ink
+// box (7 x 7 from x - 1, y - 1) unless `box` is false.
+export function stateIcon(kind, x, y, col = STATE_COL()[kind], box = true) {
+  const rows = STATE_ICONS[kind];
+  if (!rows) return;
+  if (box) R(x - 1, y - 1, 7, 7, C.ink);
+  rows.forEach((r, j) => { for (let i = 0; i < 5; i++) if (r[i] === '#') R(x + i, y + j, 1, 1, col); });
+}
+// The patterns inside a zone of a bar (x, y, w, h): dots (good), a hatch (burnt).
+export function zonePattern(kind, x, y, w, h) {
+  if (w <= 0) return;
+  if (kind === 'good') for (let i = 1; i < w; i += 3) R(x + i, y + Math.floor((h - 1) / 2), 1, 1, mix(ZONE.good, C.ink, 0.55));
+  else if (kind === 'burnt') for (let i = 0; i < w; i++) for (let j = 0; j < h; j++) if ((i + j) % 3 === 0) R(x + i, y + j, 1, 1, mix(ZONE.burnt, C.ink, 0.5));
+}
 // A cooking meter (w x h inside a 1 px outline) with the needle at p. In the
 // gold, the outline glows gold. `active` false (the grill side facing up)
-// stripes it dark.
-export function meter(x, y, w, h, p, spec, active = true, t = 0) {
+// stripes it dark. With colour patterns on, the good zone is dotted and the
+// needle wears the state's shape above it (tick, star, X), unless `icon` is
+// false (the grill's two bars share one shape, by the food).
+export function meter(x, y, w, h, p, spec, active = true, t = 0, icon = true) {
   const span = spec.max;
   const px = (v) => x + Math.round((Math.min(v, span) / span) * w);
   const gold = inGold(p, spec);
   R(x - 1, y - 1, w + 2, h + 2, gold ? (Math.floor(t * 4) % 2 ? ZONE.shine : ZONE.perfect) : C.ink);
   R(x, y, w, h, ZONE.raw);
   R(px(spec.done), y, px(spec.burnt) - px(spec.done), h, ZONE.good);
+  if (PATTERNS) zonePattern('good', px(spec.done), y, px(spec.burnt) - px(spec.done), h);
   R(px(spec.perfectLo), y, px(spec.perfectHi) - px(spec.perfectLo), h, ZONE.perfect);
   if (h >= 3) R(px(spec.perfectLo), y, px(spec.perfectHi) - px(spec.perfectLo), 1, ZONE.shine);
-  if (spec.burnt < span) R(px(spec.burnt), y, x + w - px(spec.burnt), h, ZONE.burnt);
+  if (spec.burnt < span) { R(px(spec.burnt), y, x + w - px(spec.burnt), h, ZONE.burnt); zonePattern('burnt', px(spec.burnt), y, x + w - px(spec.burnt), h); }
   if (!active) for (let i = 0; i < w; i += 2) R(x + i, y, 1, h, C.ink);
   const m = Math.min(x + w - 1, px(p));
   R(m - 1, y - 2, 3, h + 4, C.ink);
   R(m, y - 1, 1, h + 2, C.white);
+  const st = meterState(p, spec);
+  if (icon && PATTERNS && st !== 'raw') stateIcon(st, m - 2, y - 8);
 }
 // The legend, one row 5 px tall centred on cx: a swatch and a word for green,
 // gold and red (and icy blue for COLD on winter nights, when `words.cold` is
-// set). `light`: on a white card (ink words, no outline).
+// set). `light`: on a white card (ink words, no outline). With colour
+// patterns on, each swatch is its shape (tick, star, X, snowflake).
 export function meterLegend(cx, y, words, light = false) {
-  const items = [[ZONE.good, words.good], [ZONE.perfect, words.perfect], [ZONE.burnt, words.burnt]];
-  if (words.cold) items.push([ZONE.cold, words.cold]);
-  const ws = items.map(([, s]) => 7 + tw(s));
+  const items = [['good', words.good], ['perfect', words.perfect], ['burnt', words.burnt]];
+  if (words.cold) items.push(['cold', words.cold]);
+  const sw = PATTERNS ? 8 : 7;
+  const ws = items.map(([, s]) => sw + tw(s));
   let x = cx - Math.floor((ws.reduce((a, b) => a + b, 0) + 8 * (items.length - 1)) / 2);
-  items.forEach(([col, s], i) => {
-    R(x, y - 1, 6, 7, C.ink); R(x + 1, y, 4, 5, col);
-    text(s, x + 8, y, light ? { color: C.ink, outline: null } : { color: col === ZONE.burnt ? C.redL : col });
+  items.forEach(([kind, s], i) => {
+    const col = STATE_COL()[kind];
+    if (PATTERNS) stateIcon(kind, x + 1, y, col);
+    else { R(x, y - 1, 6, 7, C.ink); R(x + 1, y, 4, 5, col); if (kind === 'burnt') zonePattern('burnt', x + 1, y, 4, 5); }
+    text(s, x + sw + 1, y, light ? { color: C.ink, outline: null } : { color: col === ZONE.burnt ? C.redL : col });
     x += ws[i] + 8;
   });
 }
