@@ -1,6 +1,6 @@
 // Code-drawn pixel art: menu items, sauce bottles, customers, the Shiba, icons.
 import { C, R, box, rbox, mix, makeCanvas, getCtx, setCtx } from './gfx.js';
-import { img, tinted, PEOPLE, registerImage } from './assets.js';
+import { img, tinted, tintImage, PEOPLE, registerImage } from './assets.js';
 import { COOK, ITEMS } from './data.js';
 import { SPIRIT_ART, FOOD_ART, mapRows } from './art.js';
 
@@ -97,7 +97,7 @@ export function itemImage(id, opts = {}) {
     return img(id);
   }
   const kind = ITEMS[id]?.kind;
-  if (kind === 'steam' || kind === 'pot') {
+  if (kind === 'steam' || kind === 'pot' || kind === 'soup') {
     // Raw dough or the noodle block, then the dish, pale until it is done;
     // left too long it goes soggy (grey and swollen-looking).
     const spec = COOK[kind];
@@ -122,7 +122,8 @@ export function drawItem(id, x, y, opts = {}) {
       ctx.drawImage(cv, x, y, 16 * s, 16 * s);
     }
   } else {
-    const im = itemImage(id, opts);
+    let im = itemImage(id, opts);
+    if (opts.cold) im = tintImage(im, 'cold', 0.55); // gone cold on the tray (winter)
     if (im) ctx.drawImage(im, x, y, 16 * s, 16 * s);
   }
   // Sauce badge: the sauce's own sprite at 1x, tucked into the corner of 2x food.
@@ -210,7 +211,13 @@ export function drawCustomer(look, cx, y, { mood = 'wait', t = 0, low = false, s
   let x = Math.round(cx - 8 * s), top = Math.round(y - 15 * s - hop);
   if (typeof look === 'string' && SPIRIT_ART[look]) {
     const a = SPIRIT_ART[look];
-    if (look === 'lantern' || look === 'moth' || look === 'crane' || look === 'wisp') top -= Math.round((Math.sin(t * 2.2 + cx) * 0.5 + 0.5) * 2) * s / 2 + s; // floating
+    if (look === 'lantern' || look === 'moth' || look === 'crane' || look === 'wisp' || look === 'ice') top -= Math.round((Math.sin(t * 2.2 + cx) * 0.5 + 0.5) * 2) * s / 2 + s; // floating
+    if (look === 'ice') { // a little cold air: frost motes drift down around it
+      for (let i = 0; i < 6; i++) {
+        const k = (t * 0.35 + i * 0.17) % 1;
+        R(x + ((i * 5 + 1) % 16) * s, top + Math.round((k * 18 - 1) * s), Math.max(1, s >> 1), Math.max(1, s >> 1), i % 2 ? '#eaf6ff' : '#9cc8f0');
+      }
+    }
     if (look === 'rabbit' && mood === 'wait') top -= Math.abs(Math.round(Math.sin(t * 3 + cx))) * s; // a small hop now and then
     if (look === 'clay') { // its steam ears puff
       const k = Math.floor(t * 2 + cx) % 3;

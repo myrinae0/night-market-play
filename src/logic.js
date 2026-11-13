@@ -2,6 +2,7 @@
 import {
   ITEMS, SAUCES, COOK, LEVELS, STAR_SHARES, LOOKS, PERSON_SHARE, WOK_ITEMS, STEAM_ITEMS, STATION_SAUCES, UPGRADES, GRILL_SLOTS,
   TRAY_MAX, STEAM_BASKETS, KETTLE_BOIL, STATION_ORDER, STATION_KIND, sauceSuits, VIP_PAY, VIP_PATIENCE, SPECIAL_PAY, RUSH_PATIENCE, ENDLESS,
+  WINTER_ENDLESS, STATIONS, SOUP_POTS, WINTER,
 } from './data.js';
 import { SPIRITS, spiritsFor } from './spirits.js';
 
@@ -19,7 +20,7 @@ export function rng(seed) {
 const pick = (r, arr) => arr[Math.floor(r() * arr.length)];
 
 export function levelDef(n) {
-  return LEVELS.find((l) => l.n === n) || (n === ENDLESS.n ? ENDLESS : null);
+  return LEVELS.find((l) => l.n === n) || (n === ENDLESS.n ? ENDLESS : n === WINTER_ENDLESS.n ? WINTER_ENDLESS : null);
 }
 
 // Items that can appear in a level's orders (Chimaek's treat never does).
@@ -40,6 +41,7 @@ function cookedLine(r, kind) {
     return line(item, item === 'mandu' && r() < 0.55 ? pick(r, STATION_SAUCES.steamer) : null);
   }
   if (kind === 'pot') return line('ramyeon', r() < 0.5 ? pick(r, STATION_SAUCES.pot) : null);
+  if (kind === 'soup') return line('tteokguk', r() < 0.55 ? pick(r, STATION_SAUCES.soup) : null);
   return line(pick(r, WOK_ITEMS), r() < 0.45 ? pick(r, STATION_SAUCES.wok) : null);
 }
 // The cooking kinds of a level's open stations.
@@ -115,13 +117,22 @@ export function makeOrder(levelN, i, r) {
       if (r() < 0.55) lines.push(line(pick(r, drinks)));
       if (i >= 4 && r() < 0.3) lines.push(cookedLine(r, pick(r, ['grill', 'fry', 'wok', 'steam'])));
     }
+  } else if (levelN === 16) {
+    // The soup pot: tteokguk (garnished from the third guest), a drink, later more.
+    if (i === 0) lines.push(line('tteokguk'));
+    else {
+      lines.push(line('tteokguk', i >= 2 && r() < 0.5 ? pick(r, STATION_SAUCES.soup) : null));
+      if (r() < 0.55) lines.push(line(pick(r, drinks)));
+      if (i >= 4 && r() < 0.3) lines.push(cookedLine(r, pick(r, ['grill', 'fry', 'wok', 'steam', 'pot'])));
+    }
   } else if (levelN > 7) {
-    // Part 2 mix nights (a line of three): one cooked thing from any open
-    // station, often a drink or a snack; festival guests order a little more.
+    // Part 2 and 3 mix nights (a line of three): one cooked thing from any open
+    // station, often a drink or a snack; festival and busy guests order a
+    // little more.
     const def = levelDef(levelN);
     const kinds = cookedKinds(def);
     lines.push(cookedLine(r, pick(r, kinds)));
-    if (def.festival && r() < 0.35) lines.push(cookedLine(r, pick(r, kinds)));
+    if ((def.festival || def.busy) && r() < 0.35) lines.push(cookedLine(r, pick(r, kinds)));
     if (r() < 0.55) lines.push(line(pick(r, r() < 0.7 ? drinks : foods)));
   } else {
     // Queue (level 6): smaller orders, since several wait at once.
@@ -135,7 +146,7 @@ export function makeOrder(levelN, i, r) {
 // (the slow stations a little more). The grill, fryer, steamer and noodle pot
 // cook 1.5x slower since Nov 13, so their waits are 1.5x too (were 16, 16, 18
 // and 20); the wok cooks as fast as you toss, so it stays at 16.
-export const COOK_WAIT = { ready: 4, grill: 24, fry: 24, wok: 16, steam: 27, pot: 30 };
+export const COOK_WAIT = { ready: 4, grill: 24, fry: 24, wok: 16, steam: 27, pot: 30, soup: 30 };
 // A line of guests: everyone waits at once, so each waits this much longer
 // (1.9 until Nov 13; slower cooking means the line moves a little slower).
 export const QUEUE_PATIENCE = 2.1;
@@ -161,12 +172,13 @@ export function featuredSpirit(levelN) {
   if (def && def.guest) return def.guest;
   return Object.keys(SPIRITS).find((id) => SPIRITS[id].from === levelN) || null;
 }
-function pickLook(levelN, i, r, def) {
+// `extra`: spirits who only come when invited (Eoreum, after the KEEPER ending).
+function pickLook(levelN, i, r, def, extra = []) {
   if (levelN === 3 && i === def.customers - 1) return 'shiba';
   const featured = featuredSpirit(levelN);
   if (i === 0 && featured) return featured;
   if (r() < PERSON_SHARE) return Math.floor(r() * LOOKS);
-  return pick(r, spiritsFor(levelN, !!def.rain));
+  return pick(r, [...spiritsFor(levelN, !!def.rain), ...extra.filter((id) => SPIRITS[id])]);
 }
 
 // Festival nights: the guest of honour and every `vipEvery`-th guest are VIPs
@@ -210,15 +222,15 @@ export function endlessRush(i) {
   const R = ENDLESS.ramp.rush;
   return spacing(i, R).some((p) => i >= p && i < p + R.count);
 }
-export const endlessSpecial = (seed) => ENDLESS.specials[(seed >>> 0) % ENDLESS.specials.length];
+export const endlessSpecial = (seed, def = ENDLESS) => def.specials[(seed >>> 0) % def.specials.length];
 // The order of guest i on an endless night (r: the night's random stream; e:
-// the night's step when they arrive, endlessStep).
-export function endlessOrder(i, r, special, e = i) {
-  const def = ENDLESS;
+// the night's step when they arrive, endlessStep). `def` is ENDLESS or
+// WINTER_ENDLESS; `extra` invited spirits (pickLook).
+export function endlessOrder(i, r, special, e = i, def = ENDLESS, extra = []) {
   const rush = endlessRush(i);
   const o = rush ? rushOrder(def.n, r) : makeOrder(def.n, i, r);
   if (!rush && r() < endlessExtra(e)) o.lines.splice(1, 0, cookedLine(r, pick(r, cookedKinds(def))));
-  o.look = pickLook(def.n, i, r, def);
+  o.look = pickLook(def.n, i, r, def, extra);
   for (const l of o.lines) if (l.item === special) l.mul = SPECIAL_PAY;
   if (!rush && endlessVip(i)) { o.vip = true; for (const l of o.lines) l.mul = (l.mul || 1) * VIP_PAY; }
   if (rush) o.rush = true;
@@ -236,6 +248,8 @@ export function makeOrders(levelN, seed) {
     const rush = isRush(def, i);
     const o = rush ? rushOrder(levelN, r) : makeOrder(levelN, i, r);
     o.look = pickLook(levelN, i, r, def);
+    // A guest who waits at the end of the line all night (Eoreum, part 3).
+    if (def.last && i === def.customers - 1) { o.lines = def.lastOrder.map((l) => line(l.item, l.sauce)); o.look = def.last; }
     if (def.special) for (const l of o.lines) if (l.item === def.special) l.mul = SPECIAL_PAY;
     if (isVip(def, i)) {
       o.vip = true;
@@ -347,6 +361,46 @@ export function stepPot(pt, dt, spec = COOK.pot) {
 }
 export const potState = (pt, spec = COOK.pot) => (pt && pt.item ? cookState(pt.p, spec) : null);
 
+// Soup pot (part 3): rice cakes simmer in the broth (a timing window like the
+// fryer, but slow). Left unstirred for spec.stickSafe seconds the soup starts
+// to stick, and spec.stickTime later it is scorched. A stir clears it.
+export function newSoup(item) {
+  return { item, p: 0, idle: 0, stick: 0, stirs: 0 };
+}
+export function stepSoup(s, dt, spec = COOK.soup) {
+  if (s.stick >= 1) return s;
+  s.p = Math.min(spec.max, s.p + dt / spec.time);
+  s.idle += dt;
+  if (s.idle > spec.stickSafe) s.stick = Math.min(1, s.stick + dt / spec.stickTime);
+  return s;
+}
+export function soupState(s, spec = COOK.soup) {
+  if (!s) return null;
+  if (s.stick >= 1) return 'burnt';
+  return cookState(s.p, spec);
+}
+// Returns false once it is scorched (a stir cannot save it then).
+export function stirSoup(s) {
+  if (!s || s.stick >= 1) return false;
+  s.idle = 0; s.stick = 0; s.stirs += 1;
+  return true;
+}
+export const soupPerfect = (s, spec = COOK.soup) => soupState(s, spec) === 'done' && isPerfect(s.p, spec);
+
+// ---------- winter (part 3) ----------
+// Hot food on the tray cools: warm runs from 1 to 0 over `coolTime` seconds,
+// then it is cold. Drinks and counter food never cool.
+export const cools = (item) => !!ITEMS[item] && ITEMS[item].kind !== 'ready' && !ITEMS[item].treat;
+export function coolTray(tray, dt, coolTime = WINTER.coolTime) {
+  const turned = [];
+  tray.forEach((t, i) => {
+    if (t.warm == null || t.cold) return;
+    t.warm = Math.max(0, t.warm - dt / coolTime);
+    if (t.warm <= 0) { t.cold = true; turned.push(i); }
+  });
+  return turned;
+}
+
 // What lands on the tray.
 export function trayItem(item, cook = null, perfect = false) {
   return { item, cook, perfect, sauce: null };
@@ -403,10 +457,14 @@ export function scoreServe(order, tray, patienceFrac) {
     }
   }
   const extras = tray.filter((_, j) => !used[j]);
-  let paid = 0, mistakes = 0, perfects = 0;
+  let paid = 0, mistakes = 0, perfects = 0, cold = 0, warm = 0;
   const perfectItems = []; // which items were cooked in the gold (daily goals)
   for (const L of lines) {
     if (L.status === 'ok') {
+      // Winter: a cold line still counts (never a mistake), but pays less and
+      // loses its perfect bonus.
+      if (tray[L.tray].cold) { cold += 1; paid += Math.round(linePrice(L.line) * WINTER.coldPay); continue; }
+      if (tray[L.tray].warm != null) warm += 1;
       paid += linePrice(L.line);
       if (tray[L.tray].perfect) { perfects += 1; perfectItems.push(L.line.item); }
     } else mistakes += 1;
@@ -414,11 +472,11 @@ export function scoreServe(order, tray, patienceFrac) {
   mistakes += extras.length;
   const allOk = mistakes === 0;
   const frac = Math.max(0, Math.min(1, patienceFrac));
-  const tip = allOk ? Math.round(orderPrice(order) * TIP_SHARE * frac) + perfects : 0;
+  const tip = allOk ? Math.round(orderPrice(order) * TIP_SHARE * frac * (cold ? WINTER.coldTip : 1)) + perfects : 0;
   const penalty = mistakes * MISTAKE_PENALTY;
   const okCount = lines.filter((L) => L.status === 'ok').length;
   const mood = allOk ? 'happy' : okCount > 0 ? 'meh' : 'angry';
-  return { coins: paid + tip - penalty, paid, tip, penalty, perfects, perfectItems, mistakes, lines, extras, mood };
+  return { coins: paid + tip - penalty, paid, tip, penalty, perfects, perfectItems, mistakes, lines, extras, mood, cold, warm };
 }
 
 // ---------- stars and unlocks ----------
@@ -433,14 +491,16 @@ export function starsFor(coins, max) {
 // star; endless nights open with a star on the last level.
 export function isUnlocked(levelN, stars) {
   if (levelN === 1) return true;
-  if (levelN === ENDLESS.n) return (stars[LEVELS[LEVELS.length - 1].n] || 0) >= 1;
+  // Endless nights open after level 13, winter nights after level 19.
+  for (const E of [ENDLESS, WINTER_ENDLESS]) if (levelN === E.n) return (stars[E.opensAfter] || 0) >= 1;
   if (!levelDef(levelN)) return false;
   return (stars[levelN - 1] || 0) >= 1;
 }
-// Stations shown on a level: its own, plus the next one as a locked preview.
+// Stations shown on a level: its own, plus the next one as a locked preview
+// (a station with `previewFrom` only from that level; endless nights never).
 export function levelStations(levelN) {
   const def = levelDef(levelN);
-  const next = STATION_ORDER.find((id) => !def.stations.includes(id));
+  const next = def.endless ? null : STATION_ORDER.find((id) => !def.stations.includes(id) && (STATIONS[id].previewFrom || 0) <= levelN);
   return STATION_ORDER.filter((id) => def.stations.includes(id) || id === next);
 }
 export function stationStatus(levelN, station) {
@@ -460,6 +520,8 @@ export function upgradeEffects(owned = {}) {
     steamBaskets: STEAM_BASKETS + (o.steam3 ? 1 : 0),
     potBoil: COOK.pot.boil * (o.kettle ? KETTLE_BOIL : 1),
     potStaysHot: !!o.kettle,
+    soupPots: SOUP_POTS + (o.soup2 ? 1 : 0),
+    stickSafe: COOK.soup.stickSafe * (o.ironpot ? 2 : 1),
   };
 }
 // Cooking specs for a game with these upgrades (copies; COOK is never changed).
@@ -467,7 +529,7 @@ export function cookSpecs(owned) {
   const e = upgradeEffects(owned);
   return {
     grill: { ...COOK.grill }, fry: { ...COOK.fry, time: e.fryTime }, wok: { ...COOK.wok, perToss: e.perToss },
-    steam: { ...COOK.steam }, pot: { ...COOK.pot, boil: e.potBoil },
+    steam: { ...COOK.steam }, pot: { ...COOK.pot, boil: e.potBoil }, soup: { ...COOK.soup, stickSafe: e.stickSafe },
   };
 }
 export const upgradeById = (id) => UPGRADES.find((u) => u.id === id) || null;

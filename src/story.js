@@ -3,9 +3,12 @@
 // out for reading in STORY.md.
 //
 // A scene is a list of steps:
+// A scene may name a spirit `waiting` far off at the end of the line (Eoreum).
 //   { who, text }                       a line ('YOU', 'STORY' or a spirit id)
 //   { who, text, if: flag }             only when the flag is set (unless: not set)
-//   { choice: [{ text, reply: [steps], effect: { rel: n, flag } }] }
+//   { choice: [{ text, reply: [steps], effect: { rel: n, flag, who, ending }, if }] }
+//     (`who`: whose relationship moves, default the scene's spirit; `ending`:
+//     the finale's ending; an option with `if` only shows when that flag is set)
 // Choices never block: every option leads on, and Skip is always there.
 import { SPIRITS, memoryText } from './spirits.js';
 
@@ -309,15 +312,252 @@ export const SCENES = [
       { who: 'STORY', text: 'To be continued in part 3.' },
     ],
   },
+  // ---------- part 3: the long winter ----------
+  {
+    id: 'l14', level: 14, spirit: 'lantern', waiting: 'ice', title: 'First frost',
+    steps: [
+      { who: 'STORY', text: 'Winter came back overnight. Frost on the counter, ice in the rain barrels, snow on every awning.' },
+      { who: 'STORY', text: 'The lanterns light themselves anyway. The line forms. At the very end of it, something waits that does not move.' },
+      { who: 'lantern', text: 'Brr. Even ghosts feel this one. Your food will not stay hot for long tonight.' },
+      { who: 'lantern', text: 'And do not stare at the end of the line. It is rude. Chimaek is staring enough for both of you.' },
+      { who: 'STORY', text: 'A carp of clear ice floats there, upright and very still. It says nothing. The snow around it does not fall.' },
+      {
+        choice: [
+          { text: 'It waits in line like everyone.', effect: { rel: 1, flag: 'ice_wait' },
+            reply: [{ who: 'lantern', text: 'Ha. Yes. Nobody skips the line here. Not even the winter.' }] },
+          { text: 'Who is that?', effect: { rel: 0, flag: 'ice_asked' },
+            reply: [{ who: 'lantern', text: 'The cold voice from the festival, I think. I have never seen it so close.' }, { who: 'lantern', text: 'Grandma knew its name. The dog knows it too. Dogs always do.' }] },
+          { text: 'Then save it something warm.', effect: { rel: 1, flag: 'ice_warm' },
+            reply: [{ who: 'lantern', text: 'She always did. A steamed bun, last thing at night. I will keep the light on for it.' }] },
+        ],
+      },
+      { who: 'lantern', text: 'Cook last, serve fast. Cold food still counts, but nobody tips much for a cold supper.' },
+      { who: 'STORY', text: 'Chimaek does not growl. She sits up very straight, the way she did when grandma came home.' },
+    ],
+  },
+  {
+    id: 'l15', level: 15, spirit: 'frog', waiting: 'ice', title: 'The scarf',
+    steps: [
+      { who: 'STORY', text: 'Sleet on the awning. The frog hops in, shivering, dragging something stiff and red behind it.' },
+      { who: 'frog', text: 'Ribbit! I went down under the ice! So cold my boat froze! But look. Look what I found.' },
+      { who: 'STORY', text: 'It is the scarf grandma wore every winter. Red wool, frozen solid, still folded the way she folded it.' },
+      { who: 'frog', if: 'frog_teacher', text: 'My student! I brought it for you. A teacher should bring presents.' },
+      { who: 'frog', text: 'The river was holding it. Gently. Like it was keeping it for someone.' },
+      {
+        choice: [
+          { text: 'Keep it here, by the bell.', effect: { rel: 1, flag: 'scarf_kept' },
+            reply: [{ who: 'frog', text: 'By the bell. With the dog. Yes. Then she is home, a little.' }, { who: 'STORY', text: 'Chimaek puts her nose in the frozen wool and does not move for a long time.' }] },
+          { text: 'Give it back to the river.', effect: { rel: 0, flag: 'scarf_returned' },
+            reply: [{ who: 'frog', text: 'Back? Oh. Oh, I see. So the river is not alone. You are a strange keeper. A good one.' }] },
+          { text: 'Warm it by the stove.', effect: { rel: 1, flag: 'scarf_warmed' },
+            reply: [{ who: 'frog', text: 'By the stove! It will drip! It will steam! It will smell like her soup!' }, { who: 'STORY', text: 'The ice melts off it slowly, and for a moment the stall smells like her kitchen.' }] },
+        ],
+      },
+      { who: 'frog', text: 'Who did she knit it for? It is too long for her. Long enough for something very tall.' },
+      { who: 'STORY', text: 'At the end of the line, the carp of ice turns its head toward the scarf. Just a little.' },
+    ],
+  },
+  {
+    id: 'l16', level: 16, spirit: 'moth', title: 'Soup pot',
+    steps: [
+      { who: 'STORY', text: 'The moth arrives at a run, covered in snow, holding a letter over its head to keep it dry.' },
+      { who: 'moth', text: 'Post! The third letter! The last one! I told you there would be a third.' },
+      { who: 'moth', if: 'letter2_read', text: 'You read the other two. So I know you will read this one properly.' },
+      { who: 'moth', unless: 'letter2_read', text: 'It is not really a letter. It is a recipe. With a letter folded inside.' },
+      { who: 'STORY', text: 'Under the counter, behind Chimaek, sits an old iron pot you never noticed. She moves aside to let you take it.' },
+      {
+        choice: [
+          { text: 'Read it to me.', effect: { rel: 1, flag: 'letter3_read' },
+            reply: [
+              { who: 'moth', text: 'Ahem. Tteokguk, for the river. Rice cakes cut like coins, so the new year is rich.' },
+              { who: 'moth', text: 'Stir it, and do not stop. It sticks the moment you stop paying attention. So does grief.' },
+            ] },
+          { text: 'A recipe? For who?', effect: { rel: 0, flag: 'letter3_who' },
+            reply: [
+              { who: 'moth', text: 'For the river. One bowl every winter. Rice cakes like coins, broth like a warm hand.' },
+              { who: 'moth', text: 'And at the bottom, very small: I am sorry I was late.' },
+            ] },
+        ],
+      },
+      { who: 'moth', text: 'She says the last bowl is the one that matters. She underlined it. Twice.' },
+      { who: 'STORY', text: 'The old pot is cold. When you light the fire under it, the broth smells exactly like her.' },
+    ],
+  },
+  {
+    id: 'l17', level: 17, spirit: 'clay', title: 'Cold hands',
+    steps: [
+      { who: 'STORY', text: 'Ttuk is quiet tonight. There is a thin line across his belly you never noticed. A crack.' },
+      { who: 'clay', text: 'Hmph. Fine. You want to know why I am grumpy? I will tell you once.' },
+      { who: 'clay', text: 'The night she stopped, she put out my fire. The cold got in. By morning I had cracked.' },
+      { who: 'clay', text: 'She came back from the river to cook the last bowl. In me. The broth ran out through the crack, into the snow.' },
+      { who: 'clay', text: 'So the last bowl was never served. Because of me. Hmph. There. Now you know.' },
+      {
+        choice: [
+          { text: 'You did your best.', effect: { rel: 1, flag: 'ttuk_forgiven' },
+            reply: [{ who: 'clay', text: '...Hmph. Nobody says that to a pot either. Stop being kind. It is very annoying.' }] },
+          { text: 'Then I will mend you.', effect: { rel: 1, flag: 'ttuk_mended' },
+            reply: [{ who: 'clay', text: 'With what? Rice paste? Clay from the river?' }, { who: 'clay', text: '...Hmph. Fine. Gently. I am old.' }] },
+        ],
+      },
+      { who: 'STORY', text: 'A white rabbit hops onto the counter, ears pink with cold. Dal, down from the moon in the middle of winter.' },
+      { who: 'rabbit', text: 'Then I will tell the rest. I gave your grandma a bell, a dog and a promise. Here is the promise.' },
+      { who: 'rabbit', text: 'The river has a winter in it. Eoreum. Hungry, and very alone. Every year the keeper serves it one bowl, and it lets spring come.' },
+      { who: 'rabbit', if: 'dal_promise', text: 'You asked me at the festival. Nobody leaves the market hungry. Not even the winter. That is the promise.' },
+      { who: 'rabbit', text: 'And the dog? I made her from the first fire of this market. An ember with a tail. She keeps the bell, and the keeper warm.' },
+      { who: 'STORY', text: 'Chimaek wags once, as if to say: obviously.' },
+      {
+        choice: [
+          { text: 'Then I will keep it.', effect: { rel: 1, who: 'rabbit', flag: 'promise_keep' },
+            reply: [{ who: 'rabbit', text: 'Good. Keepers keep. The river is waiting.' }] },
+          { text: 'Why did she stop?', effect: { rel: 0, who: 'rabbit', flag: 'why_stop' },
+            reply: [{ who: 'rabbit', text: 'Not cold hands. Old hands. Even keepers grow old. That is why there has to be a next one.' }] },
+        ],
+      },
+    ],
+  },
+  {
+    id: 'l18', level: 18, spirit: 'fox', title: 'The whole market',
+    steps: [
+      { who: 'STORY', text: 'It snows all evening. Then the whole street turns up at once, and not one of them came to eat.' },
+      { who: 'fox', text: 'Do not look so surprised. We heard. The last bowl, the river, the promise. Word gets around a market.' },
+      { who: 'fox', text: 'So we help. Even me. Especially me. I owe her forty sausages and a mask.' },
+      { who: 'moss', text: '...I brought coins. ...For the rice cakes. ...Old ones. ...Still good.' },
+      { who: 'wisp', text: '...I will keep the tray warm. ...It is the one thing steam is good for.' },
+      { who: 'crane', text: 'I found the end of my page. She wrote it the last night: and save the best bowl for last.' },
+      { who: 'frog', if: 'scarf_warmed', text: 'And the scarf is dry! I checked! Twice!' },
+      {
+        choice: [
+          { text: 'Thank you. All of you.', effect: { rel: 1, flag: 'market_thanks' },
+            reply: [{ who: 'fox', text: 'Hmph. Do not get sentimental. We will all cry into the soup.' }] },
+          { text: 'She would have loved this.', effect: { rel: 1, flag: 'market_grandma' },
+            reply: [{ who: 'fox', text: 'She would have bossed us all around. Go on, then. Boss us.' }] },
+        ],
+      },
+      { who: 'fox', text: 'Tonight the soup pays double. Tomorrow night, the last bowl.' },
+      { who: 'STORY', text: 'Chimaek walks the whole line and sniffs every spirit in it. She growls at nobody. Not even the fox.' },
+    ],
+  },
+  {
+    id: 'l19', level: 19, spirit: 'ice', title: 'One more bowl', dog: 'stare',
+    steps: [
+      { who: 'STORY', text: 'The longest night of the winter. The snow stops. It is so quiet you can hear the river under the ice.' },
+      { who: 'STORY', text: 'Eoreum is already in line. At the very end. It was there before the lanterns came on.' },
+      { who: 'ice', text: '...You are the new keeper. ...Hello.' },
+      { who: 'ice', if: 'frost_who', text: '...You asked my name, that first night. ...It is Eoreum. ...Ice. ...Not much of a name.' },
+      { who: 'ice', unless: 'frost_who', text: '...My name is Eoreum. ...Ice. ...She gave it to me. ...Before her, I had none.' },
+      { who: 'ice', text: '...I do not want to hurt anyone. ...I only get hungry. ...And the river gets so quiet.' },
+      { who: 'ice', text: '...She fed me buns all winter, so I would not come up into the market. ...She was saving the last bowl. ...Then her hands stopped.' },
+      {
+        choice: [
+          { text: 'Your bowl comes last tonight.', effect: { rel: 1, flag: 'ice_last' },
+            reply: [{ who: 'ice', text: '...Last. ...Yes. ...The best one comes last. ...She said that too.' }] },
+          { text: 'Are you cold?', effect: { rel: 1, flag: 'ice_cold' },
+            reply: [{ who: 'ice', text: '...Always. ...That is what I am.' }, { who: 'ice', text: '...Near the stall, a little less.' }] },
+          { text: 'Why did you wait so long?', effect: { rel: 0, flag: 'ice_why' },
+            reply: [{ who: 'ice', text: '...A promise is a promise. ...I am a river. ...Rivers are patient.' }] },
+        ],
+      },
+      { who: 'ice', text: '...Feed everyone else first. ...I will wait. ...I am good at waiting.' },
+      { who: 'STORY', text: 'Chimaek leaves the counter, walks to the end of the line, and sits down next to Eoreum in the snow.' },
+    ],
+  },
+  // After night 19 (every time it is cleared, so a replay can reach another
+  // ending): the last bowl, and the finale. The ending is the answer picked;
+  // TOGETHER is offered only when you kept most spirits' promises (PROMISES).
+  {
+    id: 'l19b', level: 19, after: true, repeat: true, spirit: 'ice', dog: 'stare', title: 'The last bowl',
+    steps: [
+      { who: 'STORY', text: 'The last guest goes home. The street is white and still. Only Eoreum is left, at the end of the counter.' },
+      { who: 'STORY', text: 'You set the bowl down. Tteokguk, egg on top, the way she wrote it. The steam rises into the cold.' },
+      { who: 'ice', text: '...One more bowl. ...She promised.' },
+      { who: 'STORY', if: 'scarf_warmed', text: 'The red scarf hangs by the stove, dry and warm. Eoreum looks at it for a long time.' },
+      { who: 'STORY', if: 'scarf_kept', text: 'The red scarf lies by the bell. Chimaek has slept on it all week.' },
+      { who: 'ice', if: 'scarf_returned', text: '...You gave the river her scarf. ...I kept it. ...As warm as I could.' },
+      { who: 'STORY', text: 'Eoreum eats slowly. With every spoonful a little frost falls away from it, and the crack down its side closes.' },
+      { who: 'ice', text: '...It tastes like her. ...Like the first winter. ...Like being expected.' },
+      { who: 'ice', text: '...Now what, keeper?' },
+      {
+        choice: [
+          { text: 'Ring the bell.', effect: { ending: 'thaw', flag: 'final_ring' },
+            reply: [
+              { who: 'STORY', text: 'You take the bell out from under the counter. Chimaek lets you. She has been waiting for this.' },
+              { who: 'STORY', text: 'You ring it on purpose. Once, loud and clear. The whole street remembers itself.' },
+              { who: 'ice', text: '...Oh. ...So that is what it sounds like, from up here.' },
+              { who: 'STORY', text: 'Down at the river the ice cracks from bank to bank. Then it breaks open, and the water runs.' },
+              { who: 'ice', text: '...Spring. ...Thank you, keeper. ...I will be the river again. ...Warm, for a while.' },
+              { who: 'STORY', text: 'Eoreum melts into a small cloud of steam and drifts down to the water. Somewhere, something blooms.' },
+            ] },
+          { text: 'One bowl, every winter. I promise.', effect: { ending: 'keeper', flag: 'final_promise' },
+            reply: [
+              { who: 'STORY', text: 'You chalk it on the specials board, under the bell: ONE BOWL, EVERY WINTER.' },
+              { who: 'ice', text: '...Every winter? ...Like her?' },
+              { who: 'ice', text: '...Then I will come back. ...Every year. ...I will wait my turn.' },
+              { who: 'STORY', text: 'The river thaws a little. Not all the way. Enough. Eoreum stays to the end of the night, quiet, at the end of the counter.' },
+              { who: 'STORY', text: 'It leaves frost flowers on the empty bowl. You keep the bowl.' },
+            ] },
+          { text: 'Everyone, come cook with me.', if: 'together_ready', effect: { ending: 'together', flag: 'final_together' },
+            reply: [
+              { who: 'STORY', text: 'You call, and they come. Deung lights the stove. Ikki brings the coins. Yeo hums. Gim warms the bowls.' },
+              { who: 'STORY', text: 'Gaeguri sings the wok song, badly. Nabang reads the recipe out loud. Jongi turns the page. Ttuk boils the water, proud.' },
+              { who: 'rabbit', text: 'A promise kept by everyone is very hard to break. The moon is proud of you.' },
+              { who: 'STORY', text: 'Eoreum is not at the end of the line anymore. It is in the middle, with a bowl, among friends.' },
+              { who: 'STORY', text: 'Chimaek barks twice. Once for grandma. Once for you.' },
+              { who: 'ice', text: '...I was never hungry for soup. ...I was hungry for this.' },
+              { who: 'STORY', text: 'Down at the river the ice softens and sings. Spring will come slowly this year. Nobody is in a hurry.' },
+            ] },
+        ],
+      },
+    ],
+  },
 ];
-// The scene before a level, and the one after it (only night 13 has one).
+
+// ---------- part 3: the endings ----------
+// Every ending is a good one. `title` heads the epilogue card; `lines` are
+// its few words; `badge` is the badge it earns (goals.js).
+export const ENDINGS = {
+  thaw: {
+    n: 1, title: 'SPRING', name: 'THE THAW', badge: 'thaw',
+    lines: ['The river runs again.', 'Blossoms drift past the stall.', 'Chimaek sleeps in the sun.', 'The bell rings every evening now.'],
+  },
+  keeper: {
+    n: 2, title: 'THE KEEPER', name: 'ONE BOWL A YEAR', badge: 'keeper',
+    lines: ['Every winter, at the end of the line,', 'a quiet guest waits for one bowl.', 'You always save it the best one.', 'Eoreum comes back as a regular.'],
+  },
+  together: {
+    n: 3, title: 'TOGETHER', name: 'THE WHOLE MARKET', badge: 'together',
+    lines: ['Nobody eats alone at this stall.', 'Not the spirits, not the winter.', 'Not you.', 'Chimaek barked twice. Deung counted.'],
+  },
+};
+export const ENDING_IDS = Object.keys(ENDINGS);
+
+// Grandma's promises to each spirit, and the choices that keep them (any one
+// counts). Keep TOGETHER_MIN of them, across all three parts, and the whole
+// market cooks the last bowl with you (the TOGETHER ending).
+export const PROMISES = {
+  lantern: ['deung_told', 'ice_warm'], // the light would never go out
+  fox: ['yeo_hum', 'yeo_debt'], // never to ask about the face
+  moss: ['ikki_promise'], // the first drumstick, every batch
+  frog: ['frog_teacher', 'scarf_warmed'], // to learn the wok song
+  moth: ['letter_read', 'letter_kept', 'letter3_read'], // her letters, delivered
+  crane: ['supper_first', 'bell_known'], // nobody leaves hungry
+  wisp: ['gim_stay'], // a warm basket to sleep in
+  clay: ['ttuk_thanks', 'ttuk_forgiven', 'ttuk_mended'], // a thank you, at last
+  rabbit: ['dal_promise', 'promise_keep'], // the promise itself
+};
+export const TOGETHER_MIN = 6;
+export const promisesKept = (flags = {}) => Object.keys(PROMISES).filter((id) => PROMISES[id].some((f) => flags[f])).length;
+// Flags the story works out (no choice sets them).
+export const DERIVED_FLAGS = ['together_ready'];
+export const derivedFlags = (story) => ({ together_ready: promisesKept(story.flags) >= TOGETHER_MIN });
+// The scene before a level, and the one after it (nights 13 and 19).
 export const sceneFor = (levelN) => SCENES.find((s) => s.level === levelN && !s.after) || null;
 export const afterSceneFor = (levelN) => SCENES.find((s) => s.level === levelN && s.after) || null;
 export const sceneById = (id) => SCENES.find((s) => s.id === id) || null;
 
 // ---------- story save ----------
 export function newStory() {
-  return { seen: {}, flags: {}, rel: {}, memories: {}, picks: {}, service: {} };
+  // endings: how many times each ending was reached (part 3 finale).
+  return { seen: {}, flags: {}, rel: {}, memories: {}, picks: {}, service: {}, endings: {} };
 }
 export function normalizeStory(s) {
   const d = newStory();
@@ -362,7 +602,7 @@ export function moodsFor(story) {
 // d.cur is the line on screen; d.choice is set while a choice is waiting
 // (shown under d.cur). Replays (from the story log) change nothing.
 export function startScene(scene, story, { replay = false } = {}) {
-  const d = { scene, pc: 0, pending: [], cur: null, choice: null, done: false, replay, flags: { ...story.flags }, picks: [] };
+  const d = { scene, pc: 0, pending: [], cur: null, choice: null, done: false, replay, flags: { ...story.flags, ...derivedFlags(story) }, picks: [], ending: null };
   next(d);
   return d;
 }
@@ -381,7 +621,7 @@ function next(d) {
     const s = steps[d.pc++];
     if (!shows(s, d.flags)) continue;
     if (s.choice) {
-      d.choice = s.choice;
+      d.choice = s.choice.filter((o) => shows(o, d.flags));
       if (!d.cur) d.cur = { who: d.scene.spirit, text: '...' };
       return;
     }
@@ -403,10 +643,12 @@ export function choose(d, k, story) {
   d.picks.push(k);
   const e = opt.effect || {};
   if (e.flag) d.flags[e.flag] = true;
+  if (e.ending) d.ending = e.ending;
   if (!d.replay && story) {
-    const sp = d.scene.spirit;
+    const sp = e.who || d.scene.spirit;
     if (sp) story.rel[sp] = (story.rel[sp] || 0) + (e.rel || 0);
     if (e.flag) story.flags[e.flag] = true;
+    if (e.ending) story.endings[e.ending] = (story.endings[e.ending] || 0) + 1;
     (story.picks[d.scene.id] ||= []).push(k);
   }
   d.pending = [...(opt.reply || [])];

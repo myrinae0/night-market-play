@@ -4,6 +4,9 @@
 //   B  (G A F#m Bm)   busier tune, bells on the offbeats, woodblock and shaker
 //   A' (D Bm G A)     the tune an octave up, answered by the drum
 //   C  (Em G A D)     breather: bells lead, sparse plucks, soft drum
+// Part 3 has a winter variation of the same theme (variant 'winter'): the
+// tune held longer over minor chords (Bm, Em, F#m), doubled an octave up by
+// a soft music-box bell, a louder pad, and only a heartbeat of drum.
 // Voices: a gayageum-like pluck (bright attack, fast filter decay, a small
 // pull into the note and a bend on long notes), a two-partial bell, a soft
 // triangle bass, a quiet pad, a janggu-like hand drum, woodblock and shaker.
@@ -36,6 +39,14 @@ const SECTIONS = [
   { name: 'C', chords: ['Em', 'G', 'A', 'D'], tune: ['....6-5-', '4-------', '....3-2-', '5-------'],
     bells: [0, 2, 3, 5, 6], drum: 'C' },
 ];
+// The winter variation: the same pentatonic notes and loop length.
+const WINTER_SECTIONS = [
+  { name: 'W1', chords: ['Bm', 'G', 'Em', 'A'], tune: ['5---3---', '4---7---', '6---4-3-', '2-------'], bells: [0, 4], drum: 'W' },
+  { name: 'W2', chords: ['G', 'A', 'Fsm', 'Bm'], tune: ['8---7---', '9---8-7-', '6---5---', '4-------'], bells: [0, 2, 4, 6], drum: 'W' },
+  { name: 'W3', chords: ['Bm', 'G', 'D', 'A'], tune: ['5-3-2-3-', '4-5-7---', '6-5-4-3-', '2-3-1---'], bells: [0, 4], drum: 'W2' },
+  { name: 'W4', chords: ['Em', 'G', 'Fsm', 'A'], tune: ['........', '....6-5-', '........', '4-------'], bells: [0, 2, 3, 5, 6], drum: 'W' },
+];
+export const VARIANTS = { market: SECTIONS, winter: WINTER_SECTIONS };
 export const LOOP_BARS = SECTIONS.length * 4;
 export const LOOP_STEPS = LOOP_BARS * BAR_STEPS;
 export const LOOP_SECONDS = LOOP_STEPS * STEP;
@@ -46,12 +57,14 @@ const DRUMS = {
   B: ['D.s.k.D.s.k.D.w.', 'D.s.k.Dws.k.w.s.'],
   A2: ['D.....D...k.w...', 'D.....D.D.k.k.w.'],
   C: ['D...........k...', 'D.......D.......'],
+  W: ['D...............', '........D.......'],
+  W2: ['D.......D.......', 'D.......D...s...'],
 };
 
 // Bar n of the loop -> what plays in it (pure; used by tests).
-export function barAt(n) {
+export function barAt(n, variant = 'market') {
   const b = ((n % LOOP_BARS) + LOOP_BARS) % LOOP_BARS;
-  const sec = SECTIONS[Math.floor(b / 4)];
+  const sec = (VARIANTS[variant] || SECTIONS)[Math.floor(b / 4)];
   const i = b % 4;
   return { section: sec.name, chord: sec.chords[i], tune: sec.tune[i], bells: sec.bells,
     drum: DRUMS[sec.drum][i % 2], last: i === 3 };
@@ -69,7 +82,8 @@ export function tuneNotes(bar) {
   return out;
 }
 
-export function createMusic(ac, dest) {
+export function createMusic(ac, dest, { variant = 'market' } = {}) {
+  let v = variant;
   const bus = ac.createGain();
   bus.gain.value = 1;
   bus.connect(dest);
@@ -115,18 +129,25 @@ export function createMusic(ac, dest) {
       o.start(t); o.stop(t + dec + 0.05);
     });
   }
+  // A music-box note (winter): one soft sine, a long ring.
+  function musicBox(t, midi, vel = 0.03) {
+    const o = ac.createOscillator();
+    o.type = 'sine'; o.frequency.value = hz(midi);
+    o.connect(gainAt(t, vel, 0.003, 1.4));
+    o.start(t); o.stop(t + 1.5);
+  }
   function bass(t, midi, secs, vel = 0.09) {
     const o = ac.createOscillator();
     o.type = 'triangle'; o.frequency.value = hz(midi);
     o.connect(gainAt(t, vel, 0.02, secs));
     o.start(t); o.stop(t + secs + 0.1);
   }
-  function pad(t, notes, secs) {
+  function pad(t, notes, secs, level = 0.012) {
     for (const m of notes) {
       const o = ac.createOscillator(), g = ac.createGain();
       o.type = 'triangle'; o.frequency.value = hz(m); o.detune.value = (Math.random() - 0.5) * 8;
       g.gain.setValueAtTime(0, t);
-      g.gain.linearRampToValueAtTime(0.012, t + secs * 0.35);
+      g.gain.linearRampToValueAtTime(level, t + secs * 0.35);
       g.gain.linearRampToValueAtTime(0, t + secs + 0.15);
       o.connect(g); g.connect(bus);
       o.start(t); o.stop(t + secs + 0.2);
@@ -158,19 +179,26 @@ export function createMusic(ac, dest) {
   // Everything that starts on one 16th-note step of the loop.
   function scheduleStep(step, t) {
     const barN = Math.floor(step / BAR_STEPS), s = step % BAR_STEPS;
-    const bar = barAt(barN), ch = CH[bar.chord];
+    const winter = v === 'winter';
+    const bar = barAt(barN, v), ch = CH[bar.chord];
     if (s === 0) {
-      pad(t, ch.slice(1), BAR_STEPS * STEP);
-      bass(t, ch[0], STEP * 5);
+      pad(t, ch.slice(1), BAR_STEPS * STEP, winter ? 0.02 : 0.012);
+      bass(t, ch[0], STEP * (winter ? 12 : 5), winter ? 0.07 : 0.09);
     }
-    if (s === 6) bass(t, ch[0] + 7, STEP * 3, 0.06);
-    if (s === 10) bass(t, ch[0], STEP * 5, 0.07);
+    if (!winter && s === 6) bass(t, ch[0] + 7, STEP * 3, 0.06);
+    if (s === 10 && !winter) bass(t, ch[0], STEP * 5, 0.07);
     if (s % 2 === 0) {
       const e = s / 2;
-      for (const n of tuneNotes(bar.tune)) if (n.at === e) pluck(t, n.midi, n.len);
-      if (bar.bells.includes(e)) {
-        const tones = ch.slice(1).map((m) => m + 12);
-        bell(t, tones[(barN + bar.bells.indexOf(e)) % tones.length]);
+      let note = false;
+      for (const n of tuneNotes(bar.tune)) {
+        if (n.at !== e) continue;
+        note = true;
+        if (winter) { pluck(t, n.midi, n.len, 0.06); musicBox(t, n.midi + 12); } // softer, with a music-box double
+        else pluck(t, n.midi, n.len);
+      }
+      if (bar.bells.includes(e) && !(winter && note)) {
+        const tones = ch.slice(1).map((m) => m + (winter ? 24 : 12));
+        bell(t, tones[(barN + bar.bells.indexOf(e)) % tones.length], winter ? 0.022 : 0.035);
       }
     }
     const k = bar.drum[s];
@@ -180,6 +208,9 @@ export function createMusic(ac, dest) {
   return {
     bus,
     scheduleStep,
+    get variant() { return v; },
+    // Switches the arrangement; it takes over from the next step (same loop).
+    setVariant(name) { if (VARIANTS[name]) v = name; },
     // A short cheerful flourish for the end of a level.
     sting(t) {
       [62, 64, 66, 69, 71, 74].forEach((m, i) => pluck(t + i * 0.09, m, i === 5 ? 4 : 1, 0.11));
@@ -250,6 +281,9 @@ export function createPlayer(ac, dest, { volume = 0.7 } = {}) {
       out.gain.setTargetAtTime(volume * amount, t, 0.02);
       out.gain.setTargetAtTime(volume, t + secs * 0.5, secs * 0.4);
     },
+    // 'market' (parts 1 and 2) or 'winter' (part 3).
+    setVariant(name) { m.setVariant(name); },
+    get variant() { return m.variant; },
     sting() {
       const t = ac.currentTime;
       if (running) {

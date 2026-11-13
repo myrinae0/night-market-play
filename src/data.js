@@ -3,22 +3,28 @@
 // Stations in tab order; the renderer sizes its tabs from the ones a level
 // shows (its own, plus the next one as a locked preview). `tab` is a shorter
 // label for the tab when the name is long.
-export const STATION_ORDER = ['counter', 'grill', 'fryer', 'wok', 'steamer', 'pot'];
+export const STATION_ORDER = ['counter', 'grill', 'fryer', 'wok', 'steamer', 'pot', 'soup'];
+// The six stations of parts 1 and 2 (the first endless nights use these).
+export const PART2_STATIONS = STATION_ORDER.slice(0, 6);
 
 export const STATIONS = {
-  counter: { name: 'Counter', unlock: 1 },
+  counter: { name: 'Counter', tab: 'DRINKS', unlock: 1 },
   grill: { name: 'Grill', unlock: 2 },
   fryer: { name: 'Fryer', unlock: 3 },
   wok: { name: 'Wok', unlock: 4 },
-  steamer: { name: 'Steamer', unlock: 7 },
+  steamer: { name: 'Steamer', tab: 'STEAM', unlock: 7 },
   pot: { name: 'Noodle pot', tab: 'POT', unlock: 10 },
+  // Part 3: grandma's winter soup pot. Its locked tab shows only from level 14
+  // (`previewFrom`), so the part 2 nights keep their six tabs.
+  soup: { name: 'Soup pot', tab: 'SOUP', unlock: 16, previewFrom: 14 },
 };
 // The cooking kind of each station's food (orders pick a station by kind).
-export const STATION_KIND = { grill: 'grill', fryer: 'fry', wok: 'wok', steamer: 'steam', pot: 'pot' };
+export const STATION_KIND = { grill: 'grill', fryer: 'fry', wok: 'wok', steamer: 'steam', pot: 'pot', soup: 'soup' };
 
 // kind: 'ready' (grab and serve), 'grill' (two sides, flip), 'fry' (one timing
 // window), 'wok' (toss to cook; stop tossing and it scorches), 'steam' (cooks
-// only with the lid on), 'pot' (boil the water first, then cook the noodles).
+// only with the lid on), 'pot' (boil the water first, then cook the noodles),
+// 'soup' (simmers slowly; stir it or it sticks and scorches).
 export const ITEMS = {
   soda: { name: 'Soda', short: 'SODA', station: 'counter', kind: 'ready', price: 3, unlock: 1, drink: true },
   tea: { name: 'Barley tea', short: 'TEA', station: 'counter', kind: 'ready', price: 3, unlock: 1, drink: true },
@@ -34,6 +40,8 @@ export const ITEMS = {
   mandu: { name: 'Dumplings', short: 'MANDU', station: 'steamer', kind: 'steam', price: 9, unlock: 7, raw: 'mandu_raw', bin: 'MANDU' },
   bun: { name: 'Steamed bun', short: 'BUN', station: 'steamer', kind: 'steam', price: 7, unlock: 7, raw: 'bun_raw', bin: 'BUNS' },
   ramyeon: { name: 'Ramyeon', short: 'RAMYEON', station: 'pot', kind: 'pot', price: 11, unlock: 10, raw: 'ramyeon_raw', bin: 'RAMYEON' },
+  // Part 3: grandma's winter dish, rice cake soup (sliced rice cakes in broth).
+  tteokguk: { name: 'Rice cake soup', short: 'TTEOKGUK', station: 'soup', kind: 'soup', price: 13, unlock: 16, raw: 'tteokguk_raw', bin: 'TTEOK' },
   // Chimaek's treat (from level 9): plain beef, no marinade, no salt, no
   // onion, no chili. Grilled like the rest; never on a guest's order.
   plain: { name: 'Plain beef', short: 'PLAIN BEEF', station: 'grill', kind: 'grill', price: 0, unlock: 9, treat: true, raw: 'plain_raw', bin: 'PLAIN' },
@@ -44,20 +52,22 @@ export const STEAM_ITEMS = ['mandu', 'bun'];
 // Sauces and toppings go on finished food on the tray. Each only suits its
 // station's food (`station` can list more than one; `only` narrows it to some
 // items). The toppings (egg, scallion) work exactly like sauces and go on wok
-// dishes and ramyeon; the dips go on mandu only (a steamed bun stays plain).
+// dishes, ramyeon and tteokguk; seaweed (gim) only on tteokguk; the dips go on
+// mandu only (a steamed bun stays plain).
 export const SAUCES = {
   spicy: { name: 'Green chili', short: 'CHILI', station: 'grill', price: 1 },
   honey: { name: 'Honey', short: 'HONEY', station: 'grill', price: 1 },
   yangnyeom: { name: 'Yangnyeom', short: 'YANGNYEOM', station: 'fryer', price: 2 },
   soygarlic: { name: 'Soy garlic', short: 'SOY GARLIC', station: 'fryer', price: 2 },
-  egg: { name: 'Fried egg', short: 'EGG', station: ['wok', 'pot'], price: 2, topping: true },
-  scallion: { name: 'Scallion', short: 'SCALLION', station: ['wok', 'pot'], price: 1, topping: true },
+  egg: { name: 'Fried egg', short: 'EGG', station: ['wok', 'pot', 'soup'], price: 2, topping: true },
+  scallion: { name: 'Scallion', short: 'SCALLION', station: ['wok', 'pot', 'soup'], price: 1, topping: true },
+  gim: { name: 'Seaweed', short: 'SEAWEED', station: 'soup', price: 1, topping: true },
   soydip: { name: 'Soy dip', short: 'SOY DIP', station: 'steamer', price: 1, only: ['mandu'] },
   chilioil: { name: 'Chili oil', short: 'CHILI OIL', station: 'steamer', price: 1, only: ['mandu'] },
 };
 export const STATION_SAUCES = {
   grill: ['spicy', 'honey'], fryer: ['yangnyeom', 'soygarlic'], wok: ['egg', 'scallion'],
-  steamer: ['soydip', 'chilioil'], pot: ['egg', 'scallion'],
+  steamer: ['soydip', 'chilioil'], pot: ['egg', 'scallion'], soup: ['egg', 'scallion', 'gim'],
 };
 export const sauceStations = (id) => [].concat(SAUCES[id]?.station || []);
 // Does sauce `id` suit menu item `item`?
@@ -91,6 +101,11 @@ export const COOK = {
   steam: { time: 10.5, done: 0.68, perfectLo: 0.84, perfectHi: 1.34, burnt: 2.04, max: 2.3 },
   // Noodle pot: the water takes `boil` seconds to boil; then the noodles cook.
   pot: { boil: 4.5, time: 8.25, done: 0.68, perfectLo: 0.86, perfectHi: 1.24, burnt: 1.83, max: 2.05 },
+  // Soup pot (part 3): slow. Done at 8.2 s, perfect 10.3 to 15.6 s, scorched
+  // at 22.8 s. Left unstirred for `stickSafe` seconds it starts to stick (a
+  // thin bar fills, orange then red, like the wok's scorch) and it is scorched
+  // `stickTime` later. A stir (a tap on the pot, or the ladle) clears it.
+  soup: { time: 12, done: 0.68, perfectLo: 0.86, perfectHi: 1.3, burnt: 1.9, max: 2.1, stickSafe: 4.5, stickTime: 4.5 },
 };
 
 // The meters' colour code, the same on every station, legend and intro card:
@@ -99,7 +114,9 @@ export const COOK = {
 // text always mean the perfect zone.
 export const COOK_TEXT = {
   good: 'GOOD', perfect: 'PERFECT', aim: 'AIM FOR THE GOLD',
-  burnt: { grill: 'BURNT', fry: 'BURNT', wok: 'BURNT', steam: 'SOGGY', pot: 'MUSHY' },
+  burnt: { grill: 'BURNT', fry: 'BURNT', wok: 'BURNT', steam: 'SOGGY', pot: 'MUSHY', soup: 'SCORCHED' },
+  // Winter nights (part 3): a fourth colour, icy blue, for food gone cold on the tray.
+  cold: 'COLD',
   // Toasts when food comes off: in the gold, or in the green.
   tookPerfect: 'PERFECT!', tookGood: 'GOOD',
 };
@@ -107,7 +124,16 @@ export const COOK_TEXT = {
 export const GRILL_SLOTS = 3;
 export const FRY_BASKETS = 2;
 export const STEAM_BASKETS = 2;
+export const SOUP_POTS = 1;
 export const TRAY_MAX = 4;
+
+// Winter nights (`winter` on a level, part 3 and winter endless): frost on the
+// counter, and cooked food on the tray cools. It stays warm `coolTime`
+// seconds (a small bar under it drains to icy blue), then it is COLD: still
+// accepted, but a cold line pays `coldPay` of its price, loses its perfect
+// bonus, and the guest's tip is `coldTip` as big. Drinks, kimbap and toast
+// never cool. `help` nights (the whole market helps) cool `helpMul` as fast.
+export const WINTER = { coolTime: 25, coldPay: 0.5, coldTip: 0.5, helpMul: 0.5 };
 
 // Levels. `kind`: 'station' introduces a new station, 'mix' juggles what you
 // know, 'queue' has a line of customers, 'festival' is the lantern festival
@@ -233,6 +259,67 @@ export const LEVELS = [
       tap: ['The whole market came for the festival.', 'VIPs have a gold ticket. They pay double.', 'They wait a little less. Serve them first.'],
     },
   },
+  // ---------- part 3: the long winter ----------
+  // `winter`: frost, and food on the tray cools (WINTER). `last` (with
+  // `lastOrder`) is a guest who waits at the end of the line all night.
+  {
+    n: 14, tag: 'FROST: FOOD COOLS', title: 'First frost', kind: 'mix', preview: 'winter', queue: 3, guest: 'lantern', winter: true, regulars: true, treat: true,
+    last: 'ice', lastOrder: [{ item: 'bun', sauce: null }], stations: ['counter', 'grill', 'fryer', 'wok', 'steamer', 'pot'], customers: 12, seed: 1414,
+    intro: {
+      station: 'counter',
+      heading: 'NEW: WINTER NIGHTS',
+      drag: ['Hot food on the tray cools as it waits.', 'The bar under it drains. Blue means COLD.', 'Cold food still counts, but pays less. Cook it last, serve it fast.'],
+      tap: ['Hot food on the tray cools as it waits.', 'The bar under it drains. Blue means COLD.', 'Cold food still counts, but pays less. Cook it last, serve it fast.'],
+    },
+  },
+  {
+    n: 15, tag: 'SLEET + SPECIAL', title: 'The scarf', kind: 'mix', queue: 3, guest: 'frog', winter: true, rain: true, regulars: true, treat: true, special: 'bun',
+    stations: ['counter', 'grill', 'fryer', 'wok', 'steamer', 'pot'], customers: 13, seed: 1515,
+    intro: {
+      station: 'steamer',
+      heading: 'SLEET AND BUNS',
+      drag: ['Tonight buns pay double. Look for X2.', 'Steam them close to serving time.', 'A warm bun is a happy guest.'],
+      tap: ['Tonight buns pay double. Look for X2.', 'Steam them close to serving time.', 'A warm bun is a happy guest.'],
+    },
+  },
+  {
+    n: 16, title: 'Soup pot', kind: 'station', guest: 'moth', winter: true, regulars: true, treat: true, stations: STATION_ORDER, customers: 9, seed: 1616,
+    intro: {
+      station: 'soup',
+      heading: 'NEW: THE SOUP POT',
+      drag: ['Drag rice cakes into the pot. It simmers slowly.', 'Tap the pot, or swirl the ladle in it, to stir.', 'Stop stirring and it sticks, then scorches. Take it in the gold.'],
+      tap: ['Tap rice cakes to start a bowl.', 'Tap STIR now and then, or it sticks and scorches.', 'TAKE it in the gold. Egg, scallion or seaweed on top.'],
+    },
+  },
+  {
+    n: 17, tag: 'EVERY STATION', title: 'Cold hands', kind: 'mix', queue: 3, guest: 'clay', winter: true, regulars: true, treat: true, stations: STATION_ORDER, customers: 13, seed: 1717,
+    intro: {
+      station: 'soup',
+      heading: 'SEVEN STATIONS',
+      drag: ['Every station is open now.', 'Start the soup first. Stir it between orders.', 'Food cools on the tray. Serve it warm.'],
+      tap: ['Every station is open now.', 'Start the soup first. Tap STIR between orders.', 'Food cools on the tray. Serve it warm.'],
+    },
+  },
+  {
+    n: 18, tag: 'EVERYONE HELPS', title: 'The whole market', kind: 'mix', preview: 'help', queue: 3, guest: 'fox', winter: true, help: true, regulars: true, treat: true, special: 'tteokguk',
+    busy: true, stations: STATION_ORDER, customers: 15, seed: 1818,
+    intro: {
+      station: 'counter',
+      heading: 'NEW: EVERYONE HELPS',
+      drag: ['The whole market came to help.', 'The wisp keeps the tray warm. Food cools half as fast.', 'Tteokguk pays double tonight. Bigger orders too.'],
+      tap: ['The whole market came to help.', 'The wisp keeps the tray warm. Food cools half as fast.', 'Tteokguk pays double tonight. Bigger orders too.'],
+    },
+  },
+  {
+    n: 19, tag: 'THE FINALE', title: 'One more bowl', kind: 'finale', preview: 'finale', queue: 3, guest: 'rabbit', winter: true, regulars: true, treat: true,
+    last: 'ice', lastOrder: [{ item: 'tteokguk', sauce: 'egg' }], stations: STATION_ORDER, customers: 12, seed: 1919,
+    intro: {
+      station: 'soup',
+      heading: 'ONE MORE BOWL',
+      drag: ['Eoreum waits at the end of the line.', 'Its bowl comes last: tteokguk with egg.', 'Serve everyone else first. Nobody leaves hungry.'],
+      tap: ['Eoreum waits at the end of the line.', 'Its bowl comes last: tteokguk with egg.', 'Serve everyone else first. Nobody leaves hungry.'],
+    },
+  },
 ];
 // Endless nights: opens once level 13 has a star. Every station, a line of
 // three, guests without end; they come faster and wait less as the night
@@ -247,7 +334,7 @@ export const LEVELS = [
 // Tuned Nov 13 with the test autopilots (tools/endless-sim.js): see README.
 export const ENDLESS = {
   n: 99, endless: true, title: 'Endless nights', tag: 'BEST SCORE', kind: 'endless', queue: 3, strikes: 3,
-  regulars: true, treat: true, stations: STATION_ORDER, customers: 0, seed: 9001,
+  regulars: true, treat: true, stations: PART2_STATIONS, customers: 0, seed: 9001, opensAfter: 13,
   specials: ['ramyeon', 'mandu', 'chicken', 'tteokbokki', 'galbi', 'japchae'],
   ramp: {
     secs: 8, pace0: 0.85, paceMin: 0.35, paceScale: 70, gap0: 3.5, gapDrop: 0.05, gapMin: 1.2,
@@ -259,6 +346,20 @@ export const ENDLESS = {
     heading: 'ENDLESS NIGHTS',
     drag: ['Every station, a line of three, no end.', 'Guests come faster and wait less as it goes.', 'Three walk-outs and the night is over.'],
     tap: ['Every station, a line of three, no end.', 'Guests come faster and wait less as it goes.', 'Three walk-outs and the night is over.'],
+  },
+};
+
+// Winter nights (endless, part 3): open once level 19 has a star. The same
+// ramp as endless nights, with the winter on (food cools) and the soup pot.
+// Its own best score. After the KEEPER ending, Eoreum comes now and then.
+export const WINTER_ENDLESS = {
+  ...ENDLESS, n: 98, title: 'Winter nights', tag: 'BEST SCORE', winter: true, stations: STATION_ORDER, seed: 9802, opensAfter: 19,
+  specials: ['tteokguk', 'bun', 'ramyeon', 'mandu', 'chicken', 'galbi'],
+  intro: {
+    station: 'soup',
+    heading: 'WINTER NIGHTS',
+    drag: ['Every station and the soup pot, no end.', 'Food cools on the tray. Serve it warm.', 'Three walk-outs and the night is over.'],
+    tap: ['Every station and the soup pot, no end.', 'Food cools on the tray. Serve it warm.', 'Three walk-outs and the night is over.'],
   },
 };
 
@@ -300,7 +401,9 @@ export const PERSON_SHARE = 0.22; // now and then a normal person comes by
 // the first one or two along the way and the last of those around levels 8
 // to 10. The steamer and noodle pot upgrades (`from`: they show up in the
 // shop once their station's level is open) bring the total to 2280: a good
-// player has bought everything around levels 12 to 13.
+// player has bought everything around levels 12 to 13. The two soup pot
+// upgrades (part 3, from level 16) add 940: a good player has them both by
+// level 17 (not by 16).
 // Levels are tuned to be beatable with none; with all of them a careless
 // night (no sauces) still earns only one star (tests/upgrades.test.js).
 export const UPGRADES = [
@@ -311,6 +414,9 @@ export const UPGRADES = [
   { id: 'wokfast', name: 'SEASONED WOK', desc: 'DISHES NEED FEWER TOSSES', cost: 240 },
   { id: 'steam3', name: '3RD STEAM BASKET', desc: 'STEAM THREE AT ONCE', cost: 380, from: 7, station: 'steamer' },
   { id: 'kettle', name: 'COPPER KETTLE', desc: 'FAST BOIL, THE POT STAYS HOT', cost: 360, from: 10, station: 'pot' },
+  // Part 3: the soup pot.
+  { id: 'ironpot', name: 'IRON SOUP POT', desc: 'STICKS LESS: STIR HALF AS OFTEN', cost: 420, from: 16, station: 'soup' },
+  { id: 'soup2', name: '2ND SOUP POT', desc: 'TWO BOWLS AT ONCE', cost: 520, from: 16, station: 'soup' },
 ];
 // The copper kettle: water boils this much faster, and after you take the
 // noodles the pot keeps its boiling water for the next ramyeon.

@@ -46,6 +46,12 @@ export function setSfxVolume(v) {
   if (sfxBus) sfxBus.gain.value = sfxVol;
 }
 export const volumes = () => ({ music: musicVol, amb: ambVol, sfx: sfxVol });
+// Winter nights (part 3): the winter variation of the music.
+let winter = false;
+export function setWinter(on) {
+  winter = !!on;
+  if (music) music.setVariant(winter ? 'winter' : 'market');
+}
 // Rain on the awning (rainy nights).
 export function setRain(on) {
   rain = !!on;
@@ -73,6 +79,7 @@ export function unlock() {
     const d = noiseBuf.getChannelData(0);
     for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
     music = createPlayer(ac, master, { volume: musicVol });
+    music.setVariant(winter ? 'winter' : 'market');
     amb = createAmbience(ac, master, { volume: ambVol });
     // Pause everything while the tab is hidden; pick up where it was on return.
     document.addEventListener('visibilitychange', () => {
@@ -111,6 +118,7 @@ function noise(dur, { type = 'bandpass', f = 2000, to = null, q = 1, vol = 0.2, 
   s.start(t0, Math.random() * 0.5); s.stop(t0 + attack + dur + 0.05);
 }
 
+const bark = (at) => { tone(520, 0.09, { type: 'sawtooth', vol: 0.07, to: 300, at }); noise(0.08, { type: 'bandpass', f: 900, q: 2, vol: 0.08, at }); };
 const SOUNDS = {
   tap: () => tone(880, 0.04, { vol: 0.06 }),
   grab: () => { tone(520, 0.05, { vol: 0.08, type: 'triangle' }); tone(780, 0.07, { vol: 0.08, type: 'triangle', at: 0.04 }); },
@@ -153,6 +161,11 @@ const SOUNDS = {
   yip: () => { tone(880, 0.07, { type: 'triangle', vol: 0.1, to: 1320 }); tone(1100, 0.09, { type: 'triangle', vol: 0.09, to: 1560, at: 0.12 }); },
   sniff: () => { noise(0.06, { type: 'bandpass', f: 2500, q: 3, vol: 0.08 }); noise(0.06, { type: 'bandpass', f: 2800, q: 3, vol: 0.08, at: 0.1 }); },
   plop: () => { tone(420, 0.08, { type: 'sine', vol: 0.09, to: 160 }); noise(0.12, { type: 'lowpass', f: 700, vol: 0.08, at: 0.03 }); },
+  // Part 3: a ladle swirl in the soup, food going cold (an icy tinkle), and Chimaek's bark.
+  stir: () => { noise(0.28, { type: 'bandpass', f: 500, to: 900, q: 1.2, vol: 0.12, attack: 0.04 }); tone(300, 0.12, { type: 'sine', vol: 0.04, to: 420, at: 0.1 }); },
+  chill: () => { [2637, 3136, 3951].forEach((f, i) => tone(f, 0.12, { type: 'sine', vol: 0.035, at: i * 0.05 })); },
+  bark: () => bark(0),
+  bark2: () => { bark(0); bark(0.32); },
 };
 
 // Frequent ambient cooking sounds don't duck the music (it would pump).

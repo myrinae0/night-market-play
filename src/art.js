@@ -219,6 +219,32 @@ export const SPIRIT_ART = {
       '..kkkkkkkkkkkk..',
     ]],
   },
+  // Eoreum (part 3): the river in winter, an original design. A carp of
+  // clear river ice floating upright: a crown of frost crystals, dark round
+  // eyes with a glint, icicle fins and a forked tail; a crack runs down its
+  // right side (it closes as it eats in the finale). Dark navy outline, as the
+  // ice has no brown in it.
+  ice: {
+    pal: { k: '#22305a', i: '#d4ecff', I: '#9cc8f0', d: '#6a94c8', w: '#ffffff', e: '#16203e', g: '#eaf6ff', c: '#5a7ab8', f: '#f2f8ff' },
+    frames: [[
+      '.......ff.......',
+      '.....f.ff.f.....',
+      '.....kkkkkk.....',
+      '....kiiwwiik....',
+      '...kiwiiiiiIk...',
+      '...kigeiigeIk...',
+      '...kieeiieeIk...',
+      '.kkkiiiiiicIkkk.',
+      'kIdkiiieeicIkdIk',
+      '.kdkiiiiicIIkdk.',
+      '..k.kiiiicIk.k..',
+      '....kiiiIIdk....',
+      '.....kiIIdk.....',
+      '......kIdk......',
+      '....kIk..kdk....',
+      '....kk....kk....',
+    ]],
+  },
 };
 
 // ---------- wok dishes (no CC0 sprite for these) ----------
@@ -442,6 +468,76 @@ Object.assign(FOOD_ART, {
       '.kRRRRRRRRRRRRk.',
       '..kkkkkkkkkkkk..',
       '................', '................', '................', '................',
+    ],
+  },
+});
+
+// ---------- part 3: the soup pot ----------
+// Tteokguk is drawn on the pack's soup bowl (like ramyeon): milky beef broth,
+// white rice cake slices. Raw: a little pile of sliced rice cakes (coins).
+// Seaweed (gim) is a topping: a few dark sheets with sesame.
+Object.assign(FOOD_ART, {
+  tteokguk: {
+    pal: { ...PACK, m: '#f4ecd6', M: '#dccfae', w: '#ffffff', s: '#c6b994' },
+    rows: [
+      '................',
+      '................',
+      '.....aaaaaa.....',
+      '...aabbccccaa...',
+      '..abMmmmmmmmMca.',
+      '.abMwwmmmwwmMca.',
+      '.abmssmwwmssmca.',
+      '.abMmmmssmmmMca.',
+      '.adbMwwmmmwwbba.',
+      '.addbcssccssbba.',
+      '..abddbbbbbbca..',
+      '...abbcccccca...',
+      '....abbbccca....',
+      '.....aaaaaa.....',
+      '................',
+      '................',
+    ],
+  },
+  tteokguk_raw: {
+    pal: { k: OL, w: '#fbf6ea', h: '#ffffff', s: '#ddd2bc' },
+    rows: [
+      '................',
+      '................',
+      '................',
+      '.....kkkk.......',
+      '....kwwwhk......',
+      '....kwwwsk.kkkk.',
+      '.....kkkk.kwwwhk',
+      '..kkkk....kwwwsk',
+      '.kwwwhk....kkkk.',
+      '.kwwwsk.kkkk....',
+      '..kkkk.kwwwhk...',
+      '.......kwwwsk...',
+      '........kkkk....',
+      '................',
+      '................',
+      '................',
+    ],
+  },
+  gim: {
+    pal: { k: OL, g: '#1f3a2a', G: '#2f5a3a', s: '#f4e3c3' },
+    rows: [
+      '................',
+      '................',
+      '................',
+      '................',
+      '.....kkkkkk.....',
+      '....kgGgGgGk....',
+      '...kGgGsGgGgk...',
+      '...kgGgGgGsGk...',
+      '...kGgGgGgGgk...',
+      '....kgGgGgGk....',
+      '.....kkkkkk.....',
+      '................',
+      '................',
+      '................',
+      '................',
+      '................',
     ],
   },
 });

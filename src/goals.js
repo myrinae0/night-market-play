@@ -9,7 +9,7 @@
 // things the player has reached (`from`: a level that must be open).
 //
 // Badges: one-time achievements, kept forever (until reset progress).
-import { ITEMS, LEVELS, UPGRADES, ENDLESS } from './data.js';
+import { ITEMS, LEVELS, UPGRADES, ENDLESS, WINTER_ENDLESS } from './data.js';
 import { isUnlocked, rng } from './logic.js';
 import { SPIRITS } from './spirits.js';
 
@@ -28,6 +28,9 @@ export const GOAL_COUNT = 3;
 //   stars3    nights with three stars
 //   tips      tip coins earned
 //   endless   guests served on endless nights
+//   winterend guests served on winter (endless) nights
+//   warm      hot food served before it went cold, on winter nights
+//   garnish   tteokguk served with a topping (egg, scallion or seaweed)
 // `label` fits the title's goals board (12 letters at most), `desc` the
 // end card and the badges screen.
 export const GOAL_POOL = [
@@ -50,11 +53,16 @@ export const GOAL_POOL = [
   { id: 'regulars', label: 'REGULARS', desc: 'SERVE REGULARS WHO CAME BACK', kind: 'regulars', n: 5, reward: 20, from: 8 },
   { id: 'vips', label: 'VIPS', desc: 'SERVE VIP GUESTS (GOLD TICKETS)', kind: 'vips', n: 3, reward: 30, from: 13 },
   { id: 'endless', label: 'ENDLESS', desc: 'SERVE GUESTS ON ENDLESS NIGHTS', kind: 'endless', n: 20, reward: 35, from: ENDLESS.n },
+  // part 3: winter and the soup pot
+  { id: 'warm', label: 'SERVED WARM', desc: 'SERVE HOT FOOD BEFORE IT GOES COLD', kind: 'warm', n: 8, reward: 25, from: 14 },
+  { id: 'soup', label: 'GOLD SOUP', desc: 'SERVE TTEOKGUK COOKED IN THE GOLD', kind: 'gold', items: ['tteokguk'], n: 3, reward: 30, from: 16 },
+  { id: 'garnish', label: 'GARNISHED', desc: 'TOP TTEOKGUK WITH EGG, SCALLION OR SEAWEED', kind: 'garnish', n: 3, reward: 20, from: 16 },
+  { id: 'winterend', label: 'WINTER NIGHT', desc: 'SERVE GUESTS ON WINTER ENDLESS NIGHTS', kind: 'winterend', n: 15, reward: 35, from: WINTER_ENDLESS.n },
 ];
 export const goalDef = (id) => GOAL_POOL.find((d) => d.id === id) || null;
 
 // Badges. `icon`: a menu item sprite, or 'star', 'dog', 'heart', 'lantern',
-// 'coin', 'infinity', 'bell'.
+// 'coin', 'infinity', 'bell', 'snow', 'flower', 'ice' (Eoreum).
 export const BADGES = [
   { id: 'night1', name: 'OPEN AGAIN', desc: 'CLEAR THE FIRST NIGHT', icon: 'soda' },
   { id: 'goldgrill', name: 'GRILL GOLD', desc: 'SERVE A PERFECT GRILL ITEM', icon: 'galbi' },
@@ -76,6 +84,13 @@ export const BADGES = [
   { id: 'fullstall', name: 'FULL STALL', desc: 'BUY EVERY STALL UPGRADE', icon: 'kimbap' },
   { id: 'endless30', name: 'NO LAST GUEST', desc: 'SERVE 30 GUESTS IN ONE ENDLESS NIGHT', icon: 'infinity' },
   { id: 'goals10', name: 'GOAL KEEPER', desc: 'FINISH 10 DAILY GOALS', icon: 'coin' },
+  // part 3
+  { id: 'goldsoup', name: 'SOUP GOLD', desc: 'SERVE PERFECT TTEOKGUK', icon: 'tteokguk' },
+  { id: 'warmhands', name: 'WARM HANDS', desc: 'A WINTER NIGHT WITH NO COLD FOOD SERVED', icon: 'bun' },
+  { id: 'part3', name: 'PART 3 STARS', desc: 'THREE STARS ON LEVELS 14 TO 19', icon: 'snow' },
+  { id: 'thaw', name: 'SPRING', desc: 'REACH THE THAW ENDING', icon: 'flower' },
+  { id: 'keeper', name: 'THE KEEPER', desc: 'REACH THE KEEPER ENDING', icon: 'ice' },
+  { id: 'together', name: 'TOGETHER', desc: 'REACH THE TOGETHER ENDING', icon: 'dog' },
 ];
 
 const newStats = () => ({ gold: 0, goldBy: {}, happy: 0, fed: 0, vips: 0, goalsDone: 0, nights: 0 });
@@ -131,7 +146,10 @@ function amount(d, ev, night) {
     if (d.kind === 'vips') return ev.vip ? 1 : 0;
     if (d.kind === 'regulars') return ev.regular ? 1 : 0;
     if (d.kind === 'tips') return r.tip || 0;
-    if (d.kind === 'endless') return ev.endless ? 1 : 0;
+    if (d.kind === 'endless') return ev.endless && !ev.winter ? 1 : 0;
+    if (d.kind === 'winterend') return ev.endless && ev.winter ? 1 : 0;
+    if (d.kind === 'warm') return r.warm || 0;
+    if (d.kind === 'garnish') return r.lines.filter((L) => L.line.item === 'tteokguk' && L.line.sauce).length;
     return 0;
   }
   if (ev.type === 'fed') return d.kind === 'fed' ? 1 : 0;
@@ -214,6 +232,12 @@ export function earnedBadges(s, ev = null) {
     fullstall: () => UPGRADES.every((u) => s.upgrades && s.upgrades[u.id]),
     endless30: () => !!end && end.endless && end.served >= 30,
     goals10: () => st.goalsDone >= 10,
+    goldsoup: () => goldIn(st, ['tteokguk']) > 0,
+    warmhands: () => !!end && !end.endless && !!end.winter && end.stars > 0 && end.served > 0 && !end.cold,
+    part3: () => all3(14, 19),
+    thaw: () => !!(s.story && s.story.endings && s.story.endings.thaw),
+    keeper: () => !!(s.story && s.story.endings && s.story.endings.keeper),
+    together: () => !!(s.story && s.story.endings && s.story.endings.together),
   };
   const got = [];
   for (const b of BADGES) {

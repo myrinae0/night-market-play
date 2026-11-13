@@ -1,12 +1,13 @@
 // Game state and player actions (no DOM). The renderer reads state; main.js
 // turns input (drags or taps) into these actions and plays the events they emit.
-import { ITEMS, SAUCES, FRY_BASKETS, sauceStations, MOODS, TREAT, RUSH_GAP, COOK_TEXT } from './data.js';
+import { ITEMS, SAUCES, FRY_BASKETS, sauceStations, MOODS, TREAT, RUSH_GAP, COOK_TEXT, WINTER } from './data.js';
 import {
   levelDef, makeOrders, newGrillItem, stepGrill, flipGrill, grillState, grillPerfect,
   newFryItem, stepFry, fryState, isPerfect, trayItem, canSauce, scoreServe, levelMax, starsFor,
   levelStations, stationStatus, newWokItem, stepWok, tossWok, wokState, wokPerfect, upgradeEffects, cookSpecs,
   newSteamItem, stepSteam, steamState, newPot, stepPot, potState, potBoiling,
   rng, endlessOrder, endlessGap, endlessSpecial, endlessStep,
+  newSoup, stepSoup, soupState, stirSoup, soupPerfect, cools, coolTray,
 } from './logic.js';
 import { SPIRITS } from './spirits.js';
 
@@ -18,7 +19,8 @@ const ARRIVE_GAP = 3.5; // queue levels: seconds between new guests joining the 
 // opts: seed, upgrades ({ id: true }), relTips ({ spirit: coins }),
 // moods ({ spirit: 'glad' | 'ok' | 'grumpy' }, regulars from level 8),
 // autoBasket (tap controls' helpers: battered chicken drops into a basket by
-// itself, the steamer's lid goes on by itself, noodles wait for the boil).
+// itself, the steamer's lid goes on by itself, noodles wait for the boil),
+// visitors (spirits invited onto endless nights: Eoreum after the KEEPER ending).
 export function createGame(levelN, opts = {}) {
   const def = levelDef(levelN);
   const orders = makeOrders(levelN, opts.seed);
@@ -28,7 +30,10 @@ export function createGame(levelN, opts = {}) {
   const g = {
     level: levelN, def, orders, max: levelMax(orders),
     // Endless nights make their guests as they go, from the night's seed.
-    endless: !!def.endless, rng: def.endless ? rng(seed) : null, special: def.endless ? endlessSpecial(seed) : def.special || null,
+    endless: !!def.endless, rng: def.endless ? rng(seed) : null, special: def.endless ? endlessSpecial(seed, def) : def.special || null,
+    visitors: def.endless ? opts.visitors || [] : [],
+    // Winter nights: hot food on the tray cools (help nights: more slowly).
+    winter: !!def.winter, coolTime: WINTER.coolTime / (def.help ? WINTER.helpMul : 1),
     phase: 'intro', time: 0,
     custIdx: -1, customer: null, line: [], queueMax: def.queue || 1, arriveT: 0, nextId: 1,
     coins: 0, served: 0, lost: 0, results: [],
@@ -39,6 +44,7 @@ export function createGame(levelN, opts = {}) {
     wok: null,
     steamer: new Array(fx.steamBaskets).fill(null),
     pot: null,
+    soup: new Array(fx.soupPots).fill(null),
     tray: [], trayMax: fx.trayMax,
     cook: cookSpecs(opts.upgrades),
     patienceMul: fx.patienceMul,
@@ -72,7 +78,7 @@ export function start(g) {
 
 // The next guest joins the line.
 function arrive(g) {
-  if (g.endless && g.custIdx + 1 >= g.orders.length) g.orders.push(endlessOrder(g.orders.length, g.rng, g.special, endlessStep(g.orders.length, g.time)));
+  if (g.endless && g.custIdx + 1 >= g.orders.length) g.orders.push(endlessOrder(g.orders.length, g.rng, g.special, endlessStep(g.orders.length, g.time), g.def, g.visitors));
   if (g.custIdx + 1 >= g.orders.length) return false;
   g.custIdx += 1;
   const o = g.orders[g.custIdx];
@@ -172,6 +178,19 @@ export function update(g, dt) {
     const after = potState(pt, g.cook.pot);
     if (before && before !== after) emit(g, 'sfx', { name: after === 'burnt' ? 'burn' : 'ready', station: 'pot' });
   }
+  g.soup.forEach((s, i) => {
+    if (!s) return;
+    const spec = g.cook.soup;
+    const before = soupState(s, spec), warned = s.stick > 0;
+    const wasGold = soupPerfect(s, spec);
+    stepSoup(s, dt, spec);
+    goldChime(g, wasGold, soupPerfect(s, spec), 'soup', i);
+    if (!warned && s.stick > 0) emit(g, 'stick', { slot: i });
+    const after = soupState(s, spec);
+    if (before !== after) emit(g, 'sfx', { name: after === 'burnt' ? 'burn' : 'ready', station: 'soup', slot: i });
+  });
+  // Winter: food on the tray cools; it says so once when it goes cold.
+  if (g.winter) for (const i of coolTray(g.tray, dt, g.coolTime)) { emit(g, 'cold', { index: i }); emit(g, 'sfx', { name: 'chill' }); emit(g, 'toast', { text: `${ITEMS[g.tray[i].item].short} WENT COLD` }); }
   if (g.dog) stepDog(g, dt);
   // Guests: walk in, wait (patience runs down), leave.
   for (const c of g.line) {
@@ -227,6 +246,7 @@ function trayAdd(g, t) {
     emit(g, 'toast', { text: 'TRAY IS FULL' });
     return false;
   }
+  if (g.winter && cools(t.item)) t.warm = 1; // starts cooling (winter nights)
   g.tray.push(t);
   emit(g, 'tray', { index: g.tray.length - 1 });
   return true;
@@ -287,6 +307,7 @@ export function discard(g, station, slot = 0) {
   else if (station === 'wok' && g.wok) g.wok = null;
   else if (station === 'steamer' && g.steamer[slot]) g.steamer[slot] = null;
   else if (station === 'pot' && g.pot && g.pot.item) g.pot = null;
+  else if (station === 'soup' && g.soup[slot]) g.soup[slot] = null;
   else return false;
   return toss(g, station, slot);
 }
@@ -471,6 +492,40 @@ export function potTake(g) {
   return true;
 }
 
+// Soup pot (part 3): rice cakes in a free pot (the broth is always on); stir
+// it now and then (a tap on the pot, the ladle, or STIR) or it sticks and
+// scorches; take it to the tray in the gold.
+export function soupAdd(g, item, slot = null) {
+  if (g.phase !== 'play' || ITEMS[item]?.kind !== 'soup' || !stationOpen(g, 'soup')) return false;
+  const i = slot == null ? g.soup.indexOf(null) : (g.soup[slot] === null ? slot : -1);
+  if (i < 0) { emit(g, 'sfx', { name: 'nope' }); emit(g, 'toast', { text: slot == null ? 'THE POT IS FULL' : 'THAT POT IS BUSY' }); return false; }
+  g.soup[i] = newSoup(item);
+  g.soup[i].stirT = g.time;
+  emit(g, 'sfx', { name: 'plop' });
+  emit(g, 'place', { station: 'soup', slot: i });
+  return true;
+}
+export function soupStir(g, slot) {
+  const s = g.soup[slot];
+  if (g.phase !== 'play' || !s) return false;
+  if (!stirSoup(s)) { emit(g, 'sfx', { name: 'nope' }); emit(g, 'toast', { text: 'SCORCHED! THROW IT OUT' }); return false; }
+  s.stirT = g.time;
+  emit(g, 'sfx', { name: 'stir' });
+  emit(g, 'stir', { slot });
+  return true;
+}
+export function soupTake(g, slot) {
+  const s = g.soup[slot];
+  if (!s) return false;
+  const st = soupState(s, g.cook.soup);
+  if (st === 'burnt') { g.soup[slot] = null; return toss(g, 'soup', slot); }
+  const t = trayItem(s.item, st, soupPerfect(s, g.cook.soup));
+  if (!trayAdd(g, t)) return false;
+  g.soup[slot] = null;
+  tookFeedback(g, t, 'NOT READY YET!');
+  return true;
+}
+
 // Sauces (tap controls): tap a bottle. With exactly one item it fits, it goes
 // on at once; otherwise the bottle is held until you tap an item on the tray.
 export function pickSauce(g, sauce) {
@@ -494,10 +549,12 @@ function busy(g, st) {
   if (st === 'wok') return !!g.wok;
   if (st === 'steamer') return g.steamer.some(Boolean);
   if (st === 'pot') return !!(g.pot && (g.pot.item || g.pot.queued));
+  if (st === 'soup') return g.soup.some(Boolean);
   return false;
 }
 const COOK_FIRST = {
   grill: 'GRILL SOMETHING FIRST', fryer: 'FRY CHICKEN FIRST', wok: 'COOK A WOK DISH FIRST', steamer: 'STEAM MANDU FIRST', pot: 'COOK RAMYEON FIRST',
+  soup: 'COOK TTEOKGUK FIRST',
 };
 // Why no tray item can take this sauce, in a few words for the toast.
 // Food still cooking comes first: that is the item the player is thinking of.
@@ -507,6 +564,7 @@ export function sauceHint(g, sauce) {
   if (sts.some((st) => busy(g, st))) return 'TAKE IT TO THE TRAY FIRST';
   if (g.tray.some((t) => sts.includes(ITEMS[t.item].station) && t.sauce && (!s.only || s.only.includes(t.item)))) return s.topping ? 'ALREADY TOPPED' : 'ALREADY SAUCED';
   if (s.only && g.tray.some((t) => sts.includes(ITEMS[t.item].station))) return `ONLY ON ${s.only.map((id) => ITEMS[id].short).join(' OR ')}`;
+  if (sts.length > 2) return 'COOK SOMETHING FIRST';
   if (sts.length > 1) return s.topping ? 'COOK NOODLES OR A WOK DISH' : 'COOK SOMETHING FIRST';
   return COOK_FIRST[sts[0] || sauceStations(sauce)[0]];
 }

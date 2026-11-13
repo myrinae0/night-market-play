@@ -3,17 +3,17 @@
 // (debug). drawFrame() draws whichever screen is up and returns the registry
 // of hits, drag sources and drop targets for main.js.
 import { W, H, C, R, rbox, text, tw, mix, getCtx } from './gfx.js';
-import { LEVELS, STATIONS, UPGRADES, SHOP_FROM_LEVEL, RESET_TEXT, ITEMS, COOK, COOK_TEXT, STATION_KIND } from './data.js';
+import { LEVELS, STATIONS, UPGRADES, SHOP_FROM_LEVEL, RESET_TEXT, ITEMS, COOK, COOK_TEXT, STATION_KIND, WINTER_ENDLESS } from './data.js';
 import { isUnlocked, levelDef, canBuy, upgradeOpen } from './logic.js';
 import { drawItem, drawCustomer, drawShiba, drawPortrait, starIcon, lockIcon, coinIcon, heartIcon } from './sprites.js';
 import { SPIRITS, SPIRIT_IDS } from './spirits.js';
-import { SCENES, speakerName, afterSceneFor } from './story.js';
+import { SCENES, speakerName, afterSceneFor, ENDINGS, ENDING_IDS } from './story.js';
 import { goalDef, BADGES, badgeById } from './goals.js';
 import {
-  drawGame, drawMarket, drawRain, awningAndCounter, hud, tapMode, SCENE_H, COUNTER_Y, lidArt, kettleArt, inScene, stallFront,
+  drawGame, drawMarket, drawRain, awningAndCounter, hud, tapMode, SCENE_H, COUNTER_Y, lidArt, kettleArt, inScene, stallFront, ladleArt,
 } from './render.js';
 import { drawParts } from './fx.js';
-import { resetRegistry, clearHits, hit, dim, panel, button, toggle, wrap, withOrigin, meter, meterLegend } from './ui.js';
+import { resetRegistry, clearHits, hit, dim, panel, button, toggle, wrap, withOrigin, meter, meterLegend, ZONE } from './ui.js';
 import { LAY, wideRight, centerBlock, computeLayout } from './layout.js';
 
 // Wooden floor planks over a screen rect (default: everything below y0).
@@ -31,9 +31,10 @@ const isWide = () => LAY.mode === 'wide';
 export const shopOpen = (save) => (save.stars[SHOP_FROM_LEVEL] || 0) >= 1;
 
 // ---------- title ----------
-// Levels come in pages (part 1, part 2); PART tabs, a swipe or the arrow keys
-// switch. Each card shows the level, its title, what is new and its stars.
-export const TITLE_PAGES = [[1, 2, 3, 4, 5, 6], [7, 8, 9, 10, 11, 12, 13, 99]];
+// Levels come in pages (parts 1, 2 and 3); PART tabs, a swipe or the arrow
+// keys switch. Each card shows the level, its title, what is new and its
+// stars. Part 3 ends with both endless cards: endless nights and winter nights.
+export const TITLE_PAGES = [[1, 2, 3, 4, 5, 6], [7, 8, 9, 10, 11, 12, 13, 99], [14, 15, 16, 17, 18, 19, 99, 98]];
 export const titleCard = (k, pitch = 41) => ({ x: 6 + (k % 2) * 86, y: SCENE_H + 21 + Math.floor(k / 2) * pitch, w: 82, h: 38 });
 export function defaultTitlePage(stars) {
   const top = Math.max(...LEVELS.filter((L) => isUnlocked(L.n, stars)).map((L) => L.n));
@@ -68,9 +69,9 @@ export function titleLayout(W, H, mode) {
 function titleScreen(app) {
   const t = app.time;
   const { S, floor, cards, pitch, board } = titleLayout(W, H, LAY.mode);
-  drawMarket(t, { festival: isUnlocked(13, app.save.stars) }, S);
+  drawMarket(t, { festival: isUnlocked(13, app.save.stars) && app.titlePage !== 2, frost: app.titlePage === 2 }, S);
   inScene(() => drawCustomer('lantern', 52, COUNTER_Y + 2, { t }), S);
-  awningAndCounter(t, { react: 'wag' }, S, LAY.mode === 'wide' ? S.h : S.cy + 18);
+  awningAndCounter(t, { react: 'wag', frost: app.titlePage === 2 }, S, LAY.mode === 'wide' ? S.h : S.cy + 18);
   if (board) { // tonight's menu: the newest night you can play
     const n = Math.max(...LEVELS.filter((L) => isUnlocked(L.n, app.save.stars)).map((L) => L.n));
     stallFront(S, { level: n, def: levelDef(n), time: t }, board);
@@ -96,10 +97,10 @@ function titleScreen(app) {
 }
 function titleCards(app, pitch = 41) {
   const page = app.titlePage || 0;
-  ['PART 1', 'PART 2'].forEach((lab, i) => {
+  ['PART 1', 'PART 2', 'PART 3'].forEach((lab, i) => {
     const on = page === i;
-    button(6 + i * 86, SCENE_H + 3, 82, 14, lab, on ? C.redD : C.greyDD, () => app.setTitlePage(i), 'ui', 'small', `part:${i + 1}`);
-    if (on) R(10 + i * 86, SCENE_H + 17, 74, 1, C.gold);
+    button(6 + i * 58, SCENE_H + 3, 54, 14, lab, on ? (i === 2 ? C.blueD : C.redD) : C.greyDD, () => app.setTitlePage(i), 'ui', 'small', `part:${i + 1}`);
+    if (on) R(10 + i * 58, SCENE_H + 17, 46, 1, i === 2 ? ZONE.cold : C.gold);
   });
   TITLE_PAGES[page].forEach((n, k) => {
     const L = levelDef(n);
@@ -107,25 +108,27 @@ function titleCards(app, pitch = 41) {
     const y = c.y + Math.floor(((4 - Math.ceil(TITLE_PAGES[page].length / 2)) * pitch) / 2); // fewer rows: centred in the four rows' space
     const open = isUnlocked(L.n, app.save.stars);
     rbox(x, y + 1, w, h, C.ink);
-    if (L.endless) { // endless nights: the best night so far
-      rbox(x, y, w, h, open ? C.night2 : C.greyDD, open ? C.gold : C.ink);
-      text('ENDLESS', x + 5, y + 5, { color: open ? C.gold : C.greyD, outline: null });
-      text(open ? 'NO LAST GUEST' : 'CLEAR LEVEL 13', x + 5, y + 14, { color: open ? C.cream : C.greyD, outline: null });
+    if (L.endless) { // endless nights (and winter nights): the best night so far
+      const winter = !!L.winter, best = winter ? app.save.winterBest : app.save.endlessBest;
+      rbox(x, y, w, h, open ? (winter ? '#1c3156' : C.night2) : C.greyDD, open ? (winter ? ZONE.cold : C.gold) : C.ink);
+      text(winter ? 'WINTER NIGHTS' : 'ENDLESS', x + 5, y + 5, { color: open ? (winter ? ZONE.cold : C.gold) : C.greyD, outline: null });
+      text(open ? (winter ? 'SOUP POT, NO END' : 'NO LAST GUEST') : `CLEAR LEVEL ${L.opensAfter}`, x + 5, y + 14, { color: open ? C.cream : C.greyD, outline: null });
       if (open) {
         coinIcon(x + 5, y + 22);
-        text(app.save.endlessBest ? `BEST ${app.save.endlessBest}` : 'NO BEST YET', x + 15, y + 23, { color: C.yellow, outline: null });
-        hit(x, y, w, h, () => app.playLevel(L.n), 'ui', 'level:99');
+        text(best ? `BEST ${best}` : 'NO BEST YET', x + 15, y + 23, { color: C.yellow, outline: null });
+        hit(x, y, w, h, () => app.playLevel(L.n), 'ui', `level:${L.n}`);
       } else lockIcon(x + w - 14, y + 4, C.greyD);
       return;
     }
-    rbox(x, y, w, h, open ? (L.festival ? '#fbe9b8' : C.cream) : C.greyDD);
+    rbox(x, y, w, h, open ? (L.festival ? '#fbe9b8' : L.winter ? '#e4f2fb' : C.cream) : C.greyDD);
     text(`LEVEL ${L.n}`, x + 5, y + 5, { color: open ? C.redD : C.greyD, outline: null });
     text(L.title.toUpperCase(), x + 5, y + 14, { color: open ? C.ink : C.greyD, outline: null });
     text(levelTag(L), x + 5, y + 23, { color: open ? C.greenD : C.greyD, outline: null });
     if (open) {
       const st = app.save.stars[L.n] || 0;
       for (let i = 0; i < 3; i++) starIcon(x + w - 35 + i * 10, y + 3, i < st, 1);
-      if (L.rain && !levelTag(L).includes('RAIN')) text('RAIN', x + w - 5, y + 31, { color: C.blue, outline: null, align: 'right' });
+      if (L.rain && !levelTag(L).includes('RAIN') && !L.winter) text('RAIN', x + w - 5, y + 31, { color: C.blue, outline: null, align: 'right' });
+      if (L.winter && !L.rain) text('SNOW', x + w - 5, y + 31, { color: C.blue, outline: null, align: 'right' });
       hit(x, y, w, h, () => app.playLevel(L.n), 'ui', `level:${L.n}`);
     } else lockIcon(x + w - 14, y + 4, C.greyD);
   });
@@ -190,6 +193,9 @@ function goalRows(app, x, y, w) {
 // The three goals (what each asks, progress bars, coins) and the badges in two
 // columns; tap a badge to read what it is for. Portrait: goals on top, badges
 // below. Wide: goals on the left, badges on the right.
+// Twenty badges to a page (ten rows of two).
+export const BADGE_PAGE = 20;
+export const badgePages = () => Math.ceil(BADGES.length / BADGE_PAGE);
 export const badgeBox = (i, wide) => (wide ? { x: 180 + (i % 2) * 86, y: 44 + Math.floor(i / 2) * 20, w: 84, h: 19 } : { x: 6 + (i % 2) * 86, y: 136 + Math.floor(i / 2) * 20, w: 84, h: 19 });
 function badgeIcon(b, x, y, t) { // 16 x 16
   const ic = b.icon;
@@ -199,6 +205,9 @@ function badgeIcon(b, x, y, t) { // 16 x 16
   else if (ic === 'dog') drawPortrait('shiba', x, y, 1, t);
   else if (ic === 'lantern') drawPortrait('lantern', x, y, 1, t);
   else if (ic === 'infinity') { for (const [dx, dy] of [[0, 1], [1, 0], [2, 0], [3, 1], [4, 2], [5, 2], [6, 1], [7, 0], [8, 0], [9, 1], [8, 2], [7, 2], [2, 2], [1, 2]]) R(x + 3 + dx, y + 6 + dy, 1, 1, C.gold); }
+  else if (ic === 'ice') drawPortrait('ice', x, y, 1, t);
+  else if (ic === 'snow') { const c = ZONE.cold; R(x + 7, y + 2, 2, 12, c); R(x + 2, y + 7, 12, 2, c); for (let k = 0; k < 4; k++) { R(x + 3 + k, y + 3 + k, 2, 2, c); R(x + 11 - k, y + 3 + k, 2, 2, c); } R(x + 7, y + 7, 2, 2, C.white); }
+  else if (ic === 'flower') { for (const [dx, dy] of [[5, 2], [9, 5], [7, 10], [3, 10], [1, 5]]) { R(x + dx + 1, y + dy, 4, 4, C.pink); R(x + dx + 2, y + dy + 1, 2, 2, C.white); } R(x + 6, y + 6, 4, 4, C.yellow); }
   else if (ic === 'bell') { R(x + 7, y + 2, 2, 1, C.ink); R(x + 5, y + 3, 6, 1, C.ink); R(x + 4, y + 4, 8, 7, C.ink); R(x + 5, y + 4, 6, 6, C.gold); R(x + 6, y + 4, 2, 4, C.yellow); R(x + 3, y + 11, 10, 2, C.ink); R(x + 4, y + 11, 8, 1, C.orange); R(x + 7, y + 13, 2, 2, C.ink); }
   else drawItem(ic, x, y);
 }
@@ -230,8 +239,10 @@ function badgesScreen(app) {
     const got = BADGES.filter((b) => s.badges[b.id]).length;
     const hx = wide ? 266 : 90, hy = wide ? 20 : 126;
     text(`BADGES ${got}/${BADGES.length}`, hx, hy, { font: 'big', align: 'center', color: C.gold });
-    BADGES.forEach((b, i) => {
-      const { x, y, w, h } = badgeBox(i, wide);
+    const pg = Math.min(app.badgePage || 0, badgePages() - 1);
+    BADGES.slice(pg * BADGE_PAGE, (pg + 1) * BADGE_PAGE).forEach((b, k) => {
+      const i = pg * BADGE_PAGE + k;
+      const { x, y, w, h } = badgeBox(k, wide);
       const on = !!s.badges[b.id], sel = app.badgeSel === i;
       rbox(x, y, w, h, sel ? C.gold : on ? C.night2 : C.greyDD);
       R(x + 1, y + 1, 17, 17, on ? C.night1 : C.ink);
@@ -247,7 +258,13 @@ function badgesScreen(app) {
     rbox(fx, wide ? 132 : fy, fw, 18, C.ink);
     text(b ? `${b.name}: ${s.badges[b.id] ? 'EARNED' : 'NOT YET'}` : 'TAP A BADGE TO SEE WHAT IT IS FOR', fx + fw / 2, (wide ? 132 : fy) + 3, { align: 'center', color: b && s.badges[b.id] ? C.greenL : C.grey });
     if (b) text(b.desc, fx + fw / 2, (wide ? 132 : fy) + 10, { align: 'center', color: C.cream });
-    button(wide ? 50 : 50, wide ? 160 : fy + 24, 80, 16, 'BACK', C.steelD, () => app.toTitle(), 'ui', 'small', 'back');
+    const by = wide ? 160 : fy + 24;
+    button(50, by, 80, 16, 'BACK', C.steelD, () => app.toTitle(), 'ui', 'small', 'back');
+    if (badgePages() > 1) { // more badges than fit: pages (tap < >, swipe or the arrow keys)
+      if (pg > 0) button(6, by, 38, 16, '<', C.blueD, () => app.setBadgePage(pg - 1), 'ui', 'big', 'badgeprev');
+      if (pg < badgePages() - 1) button(136, by, 38, 16, '>', C.blueD, () => app.setBadgePage(pg + 1), 'ui', 'big', 'badgenext');
+      text(`PAGE ${pg + 1}/${badgePages()}`, 90, by + 20, { align: 'center', color: C.grey });
+    }
     if (wide) drawShiba(90, 236, { t, scale: 3, mood: got > 9 ? 'happy' : 'wait' });
   }, [0, 0, 180, 390]);
 }
@@ -345,7 +362,9 @@ export function sceneLayout(W, H, mode, blockH) {
 function sceneScreen(app) {
   const d = app.dlg, t = app.time, sc = d.scene;
   const def = levelDef(sc.level);
-  const frost = !!sc.frost && d.pc >= (sc.frostAt || 0);
+  // Frost: the night 13 epilogue (from its third line), and every winter
+  // night, until the bell rings for spring in the finale.
+  const frost = (!!sc.frost && d.pc >= (sc.frostAt || 0)) || (!!def?.winter && d.ending !== 'thaw');
   const { S, box, note, scale, wall, board } = sceneLayout(W, H, LAY.mode, sceneBlockH(sc));
   Object.assign(DLG, box);
   if (wall) { // the stall's back wall behind the window (side by side)
@@ -353,10 +372,16 @@ function sceneScreen(app) {
     woodFloor(wall.y, wall.x, wall.w);
     R(wall.x - 3, 14, 3, H - 14, C.woodD); R(wall.x - 2, 14, 1, H - 14, C.wood); R(wall.x - 4, 14, 1, H - 14, C.ink);
   } else drawMarket(t, { rain: !!def?.rain, festival: !!def?.festival && !sc.after, frost }, S);
+  if (sc.waiting) inScene(() => drawCustomer(sc.waiting, Math.min(S.sw - S.d - 14, 172), COUNTER_Y - 6, { t, scale: 2 }), S); // far off, at the end of the line
   if (sc.spirit) inScene(() => drawCustomer(sc.spirit, 98, COUNTER_Y + 2, { t, scale }), S);
   if (def?.rain) drawRain(t, S);
   const solo = !sc.spirit ? { dogX: 90, dogScale: scale } : {}; // no spirit: Chimaek takes the stage
-  awningAndCounter(t, { react: sc.dog || SPIRITS[sc.spirit]?.dog || null, frost, ...solo }, S, S.h);
+  const bark = d.cur && /barks/i.test(d.cur.text); // she barks (night 13; twice in the TOGETHER ending)
+  awningAndCounter(t, { react: bark ? 'wag' : sc.dog || SPIRITS[sc.spirit]?.dog || null, frost, ...solo }, S, S.h);
+  if (bark && Math.floor(t * 3) % 2) {
+    const woof = /twice/i.test(d.cur.text) ? 'WOOF! WOOF!' : 'WOOF!';
+    inScene(() => { rbox(8, COUNTER_Y - 46, tw(woof) + 8, 11, C.white); text(woof, 12, COUNTER_Y - 43, { color: C.ink, outline: null }); }, S);
+  }
   if (board) stallFront(S, { level: def ? sc.level : 13, def: def || {}, time: t }, board);
   rbox(4, 18, 122, 13, C.ink);
   text(`NIGHT ${sc.level}: ${sc.title.toUpperCase()}`, 8, 22, { color: C.gold });
@@ -470,7 +495,10 @@ function logScreen(app) {
       else drawShiba(x + 20, y + 35, { t: app.time, react: 'growl' });
       text(sc.after ? `AFTER NIGHT ${sc.level}` : `NIGHT ${sc.level}: ${sp.name}`, x + 42, y + 6, { color: C.redD, outline: null });
       text(sc.title.toUpperCase(), x + 42, y + 15, { color: C.ink, outline: null });
-      if (sp) {
+      if (sc.repeat) { // the finale: the endings found so far
+        const found = ENDING_IDS.filter((id) => (st.endings || {})[id]).length;
+        text(`ENDINGS ${found}/${ENDING_IDS.length}`, x + 42, y + 26, { color: found ? C.purple : C.greyD, outline: null });
+      } else if (sp) {
         const got = st.memories[sc.spirit] || 0;
         text(`MEMORIES ${got}/${sp.memories.length}`, x + 42, y + 26, { color: got ? C.purple : C.greyD, outline: null });
       } else text('TO BE CONTINUED', x + 42, y + 26, { color: C.purple, outline: null });
@@ -489,26 +517,32 @@ function logScreen(app) {
 }
 
 // ---------- shop ----------
-const UP_ART = { grill4: 'galbi', tray5: 'kimbap', fastfry: 'chicken', patience: 'lantern', wokfast: 'friedrice', steam3: 'mandu', kettle: 'kettle' };
-// Portrait: the upgrades in two pages (PART 1: the first five; PART 2: the
-// steamer and noodle pot ones), one column each. Wide: every upgrade at once,
-// two columns of four.
-export const SHOP_PAGES = [UPGRADES.filter((u) => !u.from).map((u) => u.id), UPGRADES.filter((u) => u.from).map((u) => u.id)];
+const UP_ART = { grill4: 'galbi', tray5: 'kimbap', fastfry: 'chicken', patience: 'lantern', wokfast: 'friedrice', steam3: 'mandu', kettle: 'kettle', ironpot: 'ironpot', soup2: 'soup2' };
+// Portrait: the upgrades in three pages (PART 1: the first five; PART 2: the
+// steamer and noodle pot ones; PART 3: the soup pot ones), one column each.
+// Wide: two pages, parts 1 and 2 together (two columns of four), then part 3.
+const partOf = (u) => (!u.from ? 1 : u.from <= 13 ? 2 : 3);
+export const SHOP_PAGES = [1, 2, 3].map((p) => UPGRADES.filter((u) => partOf(u) === p).map((u) => u.id));
+export const WIDE_SHOP_PAGES = [UPGRADES.filter((u) => partOf(u) < 3).map((u) => u.id), SHOP_PAGES[2]];
+export const shopPages = (wide) => (wide ? WIDE_SHOP_PAGES : SHOP_PAGES);
 export function shopCardBox(i, wide) {
   return wide ? { x: 6 + Math.floor(i / 4) * 176, y: 60 + (i % 4) * 44, w: 168, h: 42 } : { x: 6, y: 74 + i * 46, w: 168, h: 42 };
 }
-// The page that opens first: part 2 once one of its upgrades can be bought or
-// is new (open and not owned), else part 1.
-export function defaultShopPage(save) {
-  return UPGRADES.some((u) => u.from && upgradeOpen(u, save.stars) && !save.upgrades[u.id]) ? 1 : 0;
+// The page that opens first: the newest part with an upgrade that is open and
+// not owned yet, else part 1. (Wide: part 3 is its second page.)
+export function defaultShopPage(save, wide = LAY.mode === 'wide') {
+  const fresh = UPGRADES.filter((u) => u.from && upgradeOpen(u, save.stars) && !save.upgrades[u.id]).map(partOf);
+  const part = fresh.length ? Math.max(...fresh) : 1;
+  return wide ? (part === 3 ? 1 : 0) : part - 1;
 }
 function shopScreen(app) {
   const s = app.save, t = app.time, wide = isWide();
   R(0, 0, W, H, C.night0);
   for (let y = 0; y < H; y += 4) R(0, y, W, 1, C.night1);
   for (let x = 0; x < W; x += 10) { const c = (x / 10) % 2 ? C.cream : C.green; R(x, 14, 10, 8, c); R(x + 1, 22, 8, 2, c); }
-  const page = Math.min(app.shopPage || 0, SHOP_PAGES.length - 1);
-  const shown = wide ? UPGRADES : UPGRADES.filter((u) => SHOP_PAGES[page].includes(u.id));
+  const pages = shopPages(wide);
+  const page = Math.min(app.shopPage || 0, pages.length - 1);
+  const shown = UPGRADES.filter((u) => pages[page].includes(u.id));
   const bw = wide ? 352 : 180;
   const y0 = wide ? 60 + 4 * 44 + 4 : 74 + SHOP_PAGES[0].length * 46 + 4;
   const bh = wide ? y0 + 56 : 390;
@@ -520,10 +554,16 @@ function shopScreen(app) {
     coinIcon(cx - 22, 44);
     text(String(s.wallet), cx - 12, 45, { color: C.yellow });
     if (!wide) {
-      ['PART 1', 'PART 2'].forEach((lab, i) => {
+      ['PART 1', 'PART 2', 'PART 3'].forEach((lab, i) => {
         const on = page === i;
-        button(6 + i * 86, 57, 82, 13, lab, on ? C.redD : C.greyDD, () => app.setShopPage(i), 'ui', 'small', `shoppage:${i + 1}`);
-        if (on) R(10 + i * 86, 70, 74, 1, C.gold);
+        button(6 + i * 58, 57, 54, 13, lab, on ? C.redD : C.greyDD, () => app.setShopPage(i), 'ui', 'small', `shoppage:${i + 1}`);
+        if (on) R(10 + i * 58, 70, 46, 1, C.gold);
+      });
+    } else { // two pages side by side: parts 1 and 2, then part 3
+      ['PARTS 1 AND 2', 'PART 3'].forEach((lab, i) => {
+        const on = page === i, bx = i ? cx + 34 : cx - 34 - 84;
+        button(bx, 41, 84, 13, lab, on ? C.redD : C.greyDD, () => app.setShopPage(i), 'ui', 'small', `shoppage:${i + 1}`);
+        if (on) R(bx + 4, 54, 76, 1, C.gold);
       });
     }
     shown.forEach((u, i) => {
@@ -544,6 +584,16 @@ function shopScreen(app) {
       } else if (u.id === 'kettle') {
         kettleArt(x + 7, y + 9);
         for (let k = 0; k < 3; k++) R(x + 33, y + 15 - k * 3 - (Math.floor(t * 4 + k) % 2), 2, 2, C.white);
+      } else if (u.id === 'ironpot' || u.id === 'soup2') { // one heavy iron pot (and a ladle), or two pots
+        const pots = u.id === 'soup2' ? [[x + 6, y + 18, 13], [x + 21, y + 22, 13]] : [[x + 7, y + 17, 26]];
+        for (const [px, py, pw] of pots) {
+          R(px, py, pw, 10, C.ink); R(px + 2, py + 10, pw - 4, 3, C.ink);
+          R(px + 1, py + 1, pw - 2, 9, '#3a3440'); R(px + 1, py + 1, pw - 2, 1, '#6a6470');
+          R(px + 2, py + 2, pw - 4, 2, '#f2e8cf');
+          R(px + 3, py + 10, pw - 6, 2, '#3a3440');
+          for (let k = 0; k < 2; k++) R(px + 3 + k * Math.floor(pw / 2), py - 3 - (Math.floor(t * 4 + k) % 2), 1, 2, C.white);
+        }
+        if (u.id === 'ironpot') ladleArt(x + 10, y + 1);
       } else drawItem(UP_ART[u.id], x + 5, y + 5, { scale: 2 });
       if (!open) { // not yet: it comes with its station
         R(x + 4, y + 4, 34, 34, mix(C.night1, C.greyDD, 0.55));
@@ -652,10 +702,42 @@ function confirmCard(app) {
 }
 
 // ---------- level intro card ----------
+// A tray item cooling (winter nights): hot, a draining bar, then COLD.
+function coolingSample(x, y, t, id = 'galbi') {
+  const k = Math.max(0, 1 - ((t * 0.22) % 1.4)); // drains, then sits cold a moment
+  const cold = k <= 0;
+  rbox(x - 4, y + 22, 40, 14, C.woodL); R(x - 2, y + 24, 36, 10, C.wood);
+  drawItem(id, x, y, { scale: 2, cold });
+  if (cold) text('COLD', x + 16, y + 30, { color: ZONE.cold, align: 'center' });
+  else {
+    R(x + 4, y + 31, 24, 4, C.ink); R(x + 5, y + 32, 22, 2, ZONE.cold); R(x + 5, y + 32, Math.round(22 * k), 2, C.cream);
+    if (k > 0.35) for (let i = 0; i < 2; i++) { const p = (t * 0.9 + i * 0.5) % 1; R(x + 13 + i * 6, y + 2 - Math.round(p * 8), 1, 2, mix('#e8e8f4', C.woodDD, p)); }
+  }
+}
 function introPreview(app, g) {
   const t = app.time, def = g.def, it = def.intro;
-  if (def.endless) { // every station's dish, bobbing
-    ['soda', 'galbi', 'chicken', 'japchae', 'mandu', 'ramyeon'].forEach((id, i) => drawItem(id, 24 + (i % 3) * 46, 104 + Math.floor(i / 3) * 22 - Math.round(Math.abs(Math.sin(t * 2 + i)) * 3), { scale: 2 }));
+  if (def.endless) { // every station's dish, bobbing (winter: the soup too, in the snow)
+    const ids = def.winter ? ['soda', 'galbi', 'tteokguk', 'japchae', 'mandu', 'ramyeon'] : ['soda', 'galbi', 'chicken', 'japchae', 'mandu', 'ramyeon'];
+    ids.forEach((id, i) => drawItem(id, 24 + (i % 3) * 46, 104 + Math.floor(i / 3) * 22 - Math.round(Math.abs(Math.sin(t * 2 + i)) * 3), { scale: 2 }));
+    return;
+  }
+  if (def.preview === 'winter') { // Eoreum at the end of the line; food on the tray cooling
+    drawCustomer('lantern', 40, 146, { t, scale: 2 });
+    drawCustomer('ice', 140, 146, { t, scale: 2 });
+    coolingSample(74, 110, t);
+    return;
+  }
+  if (def.preview === 'help') { // the whole market lends a hand: the wisp keeps a soup warm
+    ['fox', 'moss', 'wisp', 'crane'].forEach((l, i) => drawCustomer(l, 30 + i * 40, 146, { t, scale: 2 }));
+    drawItem('tteokguk', 74, 104 - Math.round(Math.abs(Math.sin(t * 3)) * 2), { scale: 2, sauce: 'gim' });
+    text('X2', 106, 120, { font: 'big', color: C.yellow });
+    return;
+  }
+  if (def.preview === 'finale') { // the last bowl, and who waits for it
+    drawCustomer('ice', 46, 148, { t, scale: 3 });
+    drawShiba(120, 148, { t, react: 'stare', scale: 2 });
+    drawItem('tteokguk', 74, 112 - Math.round(Math.abs(Math.sin(t * 2)) * 2), { scale: 2, sauce: 'egg' });
+    for (let i = 0; i < 3; i++) { const p = (t * 0.7 + i * 0.33) % 1; R(80 + i * 8, 110 - Math.round(p * 10), 1, 2, mix(C.white, C.night1, p)); }
     return;
   }
   if (def.preview === 'treat') { // Chimaek, plain beef, hearts
@@ -678,7 +760,8 @@ function introPreview(app, g) {
     return;
   }
   if (def.kind === 'queue' || (def.kind === 'mix' && def.queue > 1)) {
-    const cast = def.kind === 'queue' ? ['moth', 'crane', 'fox'] : [def.guest || 'wisp', def.n >= 10 ? 'clay' : 'wisp', 'moss'];
+    const second = def.n >= 14 ? (def.guest === 'rabbit' ? 'lantern' : 'rabbit') : def.n >= 10 ? 'clay' : 'wisp';
+    const cast = def.kind === 'queue' ? ['moth', 'crane', 'fox'] : [def.guest || 'wisp', second, 'moss'];
     cast.forEach((l, i) => drawCustomer(l, 46 + i * 44, 146, { t, scale: 2 }));
     return;
   }
@@ -688,6 +771,13 @@ function introPreview(app, g) {
     lidArt(58, 120 - hop, 62);
     R(64, 130, 52, 12, C.ink); R(65, 131, 50, 10, '#c9a46a');
     for (let i = 0; i < 4; i++) { const k = (t * 0.8 + i * 0.25) % 1; R(70 + i * 12, 116 - hop - Math.round(k * 12), 2, 2, mix('#d8d8e8', C.woodDD, k)); }
+    return;
+  }
+  if (it.station === 'soup') { // rice cakes, the ladle stirring, a bowl with seaweed
+    drawItem('tteokguk_raw', 26, 112, { scale: 2 }); drawItem('tteokguk', 116, 112, { scale: 2, sauce: 'gim' });
+    R(66, 128, 48, 14, C.ink); R(67, 128, 46, 12, '#3a3440'); R(68, 129, 44, 3, '#f2e8cf');
+    ladleArt(64 + Math.round(Math.cos(t * 4) * 10), 108);
+    for (let i = 0; i < 4; i++) { const p = (t * 0.8 + i * 0.25) % 1; R(72 + i * 11, 124 - Math.round(p * 12), 2, 2, mix('#d8d8e8', C.woodDD, p)); }
     return;
   }
   if (it.station === 'pot') {
@@ -725,7 +815,9 @@ const introRows = (app) => app.g.def.intro[tapMode(app) ? 'tap' : 'drag'].map((l
 // A night that brings a new cooking station shows the meters' colour code:
 // a sample meter (its needle sweeps from raw to burnt) and the legend.
 const LEGEND_H = 30;
-export const introLegend = (g) => (g.def.kind === 'station' && STATION_KIND[g.def.intro.station]) || null;
+// A new cooking station's night shows its meter; the first winter night the
+// cooling colours.
+export const introLegend = (g) => (g.def.kind === 'station' && STATION_KIND[g.def.intro.station]) || (g.def.preview === 'winter' ? 'winter' : null);
 export const introHeight = (app) => 137 + introRows(app).reduce((a, r) => a + r.length * 8 + 4, 0) + (introLegend(app.g) ? LEGEND_H : 0);
 function introBody(app, ph, oy) {
   const g = app.g, t = app.time, it = g.def.intro;
@@ -733,8 +825,9 @@ function introBody(app, ph, oy) {
   panel(10, 70 + oy, 160, ph);
   text(g.endless ? 'NO STARS, NO LAST GUEST' : `LEVEL ${g.level}`, 90, 78 + oy, { align: 'center', color: C.redD, outline: null });
   text(g.def.title.toUpperCase(), 90, 86 + oy, { font: 'big', align: 'center', color: C.ink, outline: null });
-  rbox(20, 100 + oy, 140, 70, g.def.rain || g.def.festival ? C.night1 : C.woodDD);
+  rbox(20, 100 + oy, 140, 70, g.def.rain || g.def.festival || g.def.winter ? C.night1 : C.woodDD);
   if (g.def.rain) for (let i = 0; i < 18; i++) R(24 + ((i * 37) % 132), 102 + oy + ((i * 23 + Math.floor(t * 60)) % 60), 1, 3, '#5f74b0');
+  if (g.def.winter) for (let i = 0; i < 16; i++) R(24 + ((i * 41 + Math.round(Math.sin(t + i) * 2)) % 132), 102 + oy + ((i * 29 + Math.floor(t * 14)) % 64), 1, 1, i % 3 ? '#dfe8f8' : C.white);
   withOffset(oy, () => introPreview(app, g)); // drawn at its own y, moved with the card
   text(it.heading, 90, 156 + oy, { align: 'center', color: C.gold });
   let y = 178 + oy;
@@ -744,12 +837,18 @@ function introBody(app, ph, oy) {
     y += 4;
   }
   const kind = introLegend(g);
-  if (kind) {
+  if (kind === 'winter') { // the warmth bar drains to icy blue: COLD
+    text('SERVE IT WARM', 90, y, { align: 'center', color: C.redD, outline: null });
+    const k = Math.max(0, 1 - ((t * 0.22) % 1.4));
+    R(29, y + 9, 122, 6, C.ink); R(30, y + 10, 120, 4, ZONE.cold); R(30, y + 10, Math.round(120 * k), 4, C.cream);
+    meterLegend(90, y + 20, { ...COOK_TEXT, burnt: COOK_TEXT.burnt.grill, cold: COOK_TEXT.cold }, true);
+    y += LEGEND_H;
+  } else if (kind) {
     const spec = COOK[kind];
     text(COOK_TEXT.aim, 90, y, { align: 'center', color: C.redD, outline: null });
     const p = ((t * 0.18) % 1) * spec.max;
     meter(30, y + 10, 120, 4, p, spec, true, t);
-    meterLegend(90, y + 20, { ...COOK_TEXT, burnt: COOK_TEXT.burnt[kind] }, true);
+    meterLegend(90, y + 20, { ...COOK_TEXT, burnt: COOK_TEXT.burnt[kind], cold: g.def.winter ? COOK_TEXT.cold : null }, true);
     y += LEGEND_H;
   }
   button(40, y + 4, 100, 16, 'TAP TO START', Math.floor(t * 2) % 2 ? C.greenD : C.green, null);
@@ -766,6 +865,8 @@ function withOffset(dy, fn) {
 export function nextNote(next) {
   if (next.kind === 'station') return `NEXT UP: THE ${STATIONS[next.stations[next.stations.length - 1]].name.toUpperCase()}`;
   if (next.kind === 'festival') return 'NEXT UP: THE LANTERN FESTIVAL';
+  if (next.kind === 'finale') return 'NEXT UP: ONE MORE BOWL';
+  if (next.preview === 'winter') return 'NEXT UP: THE LONG WINTER';
   if (next.kind === 'queue') return 'NEXT UP: A LONG LINE';
   return next.queue > 1 ? 'NEXT UP: A BUSY LINE' : 'NEXT UP: EVERY STATION AT ONCE';
 }
@@ -774,10 +875,10 @@ function endlessEnd(app) {
   centered(() => endlessCard(app), 52, 326, 14);
 }
 function endlessCard(app) {
-  const g = app.g;
+  const g = app.g, winter = !!g.def.winter;
   panel(12, 52, 156, 272);
   text('NIGHT OVER', 90, 62, { font: 'big', align: 'center', color: C.redD, outline: null });
-  text('ENDLESS NIGHTS', 90, 74, { align: 'center', color: C.greyD, outline: null });
+  text(winter ? 'WINTER NIGHTS' : 'ENDLESS NIGHTS', 90, 74, { align: 'center', color: C.greyD, outline: null });
   const best = app.newBest;
   rbox(40, 86, 100, 34, best ? C.gold : C.cream);
   coinIcon(52, 99);
@@ -789,7 +890,7 @@ function endlessCard(app) {
     ['HAPPY', String(g.served - mixups)],
     ['WALKED OUT', `${g.lost} / ${g.def.strikes}`],
     ['TONIGHT SPECIAL', ITEMS[g.special].short],
-    ['BEST NIGHT', String(app.save.endlessBest)],
+    ['BEST NIGHT', String(winter ? app.save.winterBest : app.save.endlessBest)],
     ['PURSE', `+${app.lastPay || 0} = ${app.save.wallet}`],
   ];
   rows.forEach(([a, b], i) => {
@@ -848,7 +949,7 @@ function endCard(app) {
   const next = levelDef(g.level + 1);
   const shopNext = ok && g.level >= SHOP_FROM_LEVEL;
   const after = afterSceneFor(g.level);
-  const epilogue = ok && after && !app.save.story.seen[after.id];
+  const epilogue = ok && after && (after.repeat || !app.save.story.seen[after.id]);
   const by = 304;
   button(22, by, 64, 18, 'RETRY', C.blueD, () => app.newLevel(g.level), 'ui', 'small', 'retry');
   if (epilogue) button(94, by, 64, 18, 'GO ON', Math.floor(app.time * 2) % 2 ? C.purple : C.redD, () => app.playAfter(after), 'ui', 'small', 'next');
@@ -858,9 +959,74 @@ function endCard(app) {
   let note = 'NEED 1 STAR TO OPEN THE NEXT LEVEL';
   if (ok && next && shopNext) note = `UPGRADES, THEN LEVEL ${next.n}`;
   else if (ok && next) note = nextNote(next);
-  else if (epilogue) note = 'THE BELL IS RINGING AGAIN...';
-  else if (ok) note = 'MORE NIGHTS COMING IN PART 3';
+  else if (epilogue) note = after.repeat ? 'THE LAST BOWL IS WAITING...' : 'THE BELL IS RINGING AGAIN...';
+  else if (ok) note = 'THE MARKET IS YOURS NOW';
   text(note, 90, by + 24, { align: 'center', color: ok ? C.redD : C.greyD, outline: null });
+}
+
+// ---------- the endings (part 3) ----------
+// After the finale: a short scene of the ending, then this epilogue card.
+// The street shows the ending (spring on the river, Eoreum at the counter in
+// the snow, or the whole market cooking together) and the card names it,
+// with how many of the three endings you have found.
+export const ENDING_CARD = { w: 160, h: 176 };
+export function endingLayout(W, H, mode) {
+  if (mode === 'wide') {
+    const RW = wideRight(W), LW = W - RW;
+    const cy = Math.min(H - 18, 14 + Math.max(126, Math.round((H - 14) * 0.62)));
+    return { S: { w: LW, h: H, cy, d: Math.floor((LW - 180) / 2), sw: LW }, card: { x: LW + Math.floor((RW - ENDING_CARD.w) / 2), y: Math.max(16, Math.floor((H - ENDING_CARD.h) / 2)) }, wall: { x: LW, w: RW } };
+  }
+  const cardY = H - ENDING_CARD.h - 8;
+  const cy = Math.max(140, cardY - 24);
+  return { S: { w: W, h: cardY - 4, cy, d: Math.floor((W - 180) / 2), sw: W }, card: { x: Math.floor((W - ENDING_CARD.w) / 2), y: cardY }, wall: null };
+}
+const PETAL = ['#f6c0d0', '#fbe0ea', '#f2a0b8'];
+function endingScreen(app) {
+  const t = app.time, id = ENDINGS[app.ending] ? app.ending : 'thaw', E = ENDINGS[id];
+  const { S, card, wall } = endingLayout(W, H, LAY.mode);
+  drawMarket(t, { festival: id === 'together', frost: id !== 'thaw' }, { ...S, h: wall ? H : S.h });
+  if (wall) { woodFloor(14, wall.x, wall.w); R(wall.x - 3, 14, 3, H - 14, C.woodD); R(wall.x - 2, 14, 1, H - 14, C.wood); R(wall.x - 4, 14, 1, H - 14, C.ink); }
+  else woodFloor(S.h, 0, W);
+  if (id === 'thaw') { // dawn over the river: the ice breaks up and drifts away
+    for (let k = 0; k < 4; k++) R(0, S.cy - 60 + k * 10, S.w, 10, mix(C.night3, '#f2a0a0', 0.15 + k * 0.12));
+    R(0, S.cy - 20, S.w, 12, '#3a6aa8');
+    for (let x = 0; x < S.w; x += 6) R(x + Math.round((t * 8) % 6), S.cy - 18 + ((x * 7) % 8), 3, 1, '#8fc4f0');
+    for (let k = 0; k < 6; k++) { const fx = Math.round(((k * 53 + t * 10) % (S.w + 30)) - 20); R(fx, S.cy - 16 + (k % 3) * 3, 10 + (k % 3) * 3, 3, '#eaf6ff'); }
+  }
+  inScene(() => {
+    if (id === 'keeper') { drawCustomer('ice', 112, COUNTER_Y + 2, { t, scale: 4 }); }
+    if (id === 'together') ['lantern', 'fox', 'moss', 'ice', 'moth', 'clay', 'rabbit'].forEach((l, i) => drawCustomer(l, 44 + i * 21, COUNTER_Y + 2 - (i % 2) * 6, { t, scale: 2, mood: 'happy' }));
+  }, S);
+  awningAndCounter(t, { react: 'wag', mood: 'happy', frost: id !== 'thaw', dogX: id === 'together' ? 18 : 34 }, S, wall ? H : S.cy + 18);
+  inScene(() => {
+    if (id === 'keeper') { drawItem('tteokguk', 70, COUNTER_Y - 26, { scale: 2, sauce: 'egg' }); for (let i = 0; i < 3; i++) { const p = (t * 0.6 + i / 3) % 1; R(78 + i * 6, COUNTER_Y - 24 - Math.round(p * 12), 1, 2, mix(C.white, C.night1, p)); } }
+    if (id === 'together' && Math.floor(t * 2) % 2) { rbox(4, COUNTER_Y - 48, tw('WOOF! WOOF!') + 8, 11, C.white); text('WOOF! WOOF!', 8, COUNTER_Y - 45, { color: C.ink, outline: null }); }
+  }, S);
+  if (id === 'thaw') for (let i = 0; i < 28; i++) { // blossom petals on the wind
+    const px = Math.round(((i * 37 + t * (14 + (i % 5) * 3)) % (S.w + 20)) - 10), py = Math.round(((i * 53 + t * (10 + (i % 4) * 4)) % (S.h + 10)) - 5);
+    R(px, py, 2, 1, PETAL[i % 3]); R(px + 1, py + 1, 1, 1, PETAL[(i + 1) % 3]);
+  }
+  hit(0, 0, W, H, () => {}, 'backdrop');
+  withOrigin(card.x, card.y, () => endingCard(app, id, E), [0, 0, ENDING_CARD.w, ENDING_CARD.h]);
+}
+function endingCard(app, id, E) {
+  const { w, h } = ENDING_CARD, t = app.time;
+  panel(0, 0, w, h);
+  R(2, 2, w - 4, 3, id === 'thaw' ? PETAL[2] : id === 'keeper' ? ZONE.cold : C.gold);
+  text(`ENDING ${E.n} OF ${ENDING_IDS.length}`, w / 2, 9, { align: 'center', color: C.purple, outline: null });
+  text(E.title, w / 2, 19, { font: 'big', scale: 2, align: 'center', color: C.redD, outline: null });
+  text(E.name, w / 2, 37, { align: 'center', color: C.greyD, outline: null });
+  let y = 50;
+  for (const line of E.lines) for (const r of wrap(line, w - 16)) { text(r, w / 2, y, { align: 'center', color: C.ink, outline: null }); y += 9; }
+  const ends = (app.save.story && app.save.story.endings) || {};
+  const found = ENDING_IDS.filter((k) => ends[k]).length;
+  y = Math.max(y + 4, 104);
+  R(10, y - 3, w - 20, 1, C.cream);
+  text(`ENDINGS FOUND ${found}/${ENDING_IDS.length}`, w / 2, y + 2, { align: 'center', color: C.ink, outline: null });
+  ENDING_IDS.forEach((k, i) => { const x = w / 2 - 16 + i * 12; R(x, y + 10, 8, 8, C.ink); R(x + 1, y + 11, 6, 6, ends[k] ? (k === id ? C.gold : C.greenL) : C.greyDD); });
+  if (found < ENDING_IDS.length) text('PLAY NIGHT 19 AGAIN FOR ANOTHER', w / 2, y + 22, { align: 'center', color: C.greyD, outline: null });
+  else text('YOU FOUND THEM ALL', w / 2, y + 22, { align: 'center', color: C.greenD, outline: null });
+  button(20, h - 26, w - 40, 18, 'TO THE MARKET', Math.floor(t * 2) % 2 ? C.greenD : C.green, () => app.endingDone(), 'ui', 'small', 'endingdone');
 }
 
 // ---------- cast sheet (debug: ?shot=cast) ----------
@@ -889,6 +1055,7 @@ export function drawFrame(app) {
   else if (app.screen === 'shop') { shopScreen(app); hud(app); }
   else if (app.screen === 'badges') { badgesScreen(app); hud(app); }
   else if (app.screen === 'cast') castScreen(app);
+  else if (app.screen === 'ending') { endingScreen(app); hud(app); }
   else if (app.g) {
     drawGame(app, reg);
     if (app.g.phase === 'intro') { introCard(app); hud(app); }

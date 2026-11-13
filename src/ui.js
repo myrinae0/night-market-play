@@ -93,7 +93,8 @@ export function toggle(x, y, on) {
 // One code on every station, legend and intro card (data.js COOK_TEXT has the
 // words): grey = raw, green = good, gold = perfect (inside the green),
 // red = burnt.
-export const ZONE = { raw: C.greyD, good: C.green, perfect: '#ffcd2e', shine: '#fff3a8', burnt: C.red };
+// Winter nights add a fourth colour: icy blue = cold (food gone cold on the tray).
+export const ZONE = { raw: C.greyD, good: C.green, perfect: '#ffcd2e', shine: '#fff3a8', burnt: C.red, cold: '#8fd3ff' };
 export const inGold = (p, spec) => p >= spec.perfectLo && p <= spec.perfectHi;
 // A cooking meter (w x h inside a 1 px outline) with the needle at p. In the
 // gold, the outline glows gold. `active` false (the grill side facing up)
@@ -114,9 +115,11 @@ export function meter(x, y, w, h, p, spec, active = true, t = 0) {
   R(m, y - 1, 1, h + 2, C.white);
 }
 // The legend, one row 5 px tall centred on cx: a swatch and a word for green,
-// gold and red. `light`: on a white card (ink words, no outline).
+// gold and red (and icy blue for COLD on winter nights, when `words.cold` is
+// set). `light`: on a white card (ink words, no outline).
 export function meterLegend(cx, y, words, light = false) {
   const items = [[ZONE.good, words.good], [ZONE.perfect, words.perfect], [ZONE.burnt, words.burnt]];
+  if (words.cold) items.push([ZONE.cold, words.cold]);
   const ws = items.map(([, s]) => 7 + tw(s));
   let x = cx - Math.floor((ws.reduce((a, b) => a + b, 0) + 8 * (items.length - 1)) / 2);
   items.forEach(([col, s], i) => {

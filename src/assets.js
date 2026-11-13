@@ -36,14 +36,21 @@ export function loadAssets() {
   return Promise.all(jobs);
 }
 
-const TINTS = { raw: '#f2a49a', batter: '#f6e2b0', pale: '#f4ecd8', burnt: '#2a1712', soggy: '#a8a49a', dough: '#e2ddd2' };
+// cold: food gone cold on the tray (winter nights), the meters' icy blue.
+const TINTS = { raw: '#f2a49a', batter: '#f6e2b0', pale: '#f4ecd8', burnt: '#2a1712', soggy: '#a8a49a', dough: '#e2ddd2', cold: '#a8dcff' };
 const tintCache = new Map();
 // A copy of sprite `name` with every pixel moved `amount` (0..1, in 0.1 steps)
 // toward the tint colour. Alpha is kept, so outlines and shapes don't change.
 export function tinted(name, mode, amount) {
+  return tintImage(images[name], mode, amount, name);
+}
+// The same for any image or canvas (cached per image).
+const imageKeys = new WeakMap();
+let nextKey = 0;
+export function tintImage(src, mode, amount, name = null) {
   const a = Math.round(Math.max(0, Math.min(1, amount)) * 10) / 10;
-  const src = images[name];
   if (!src || a === 0 || !TINTS[mode]) return src;
+  if (!name) { if (!imageKeys.has(src)) imageKeys.set(src, `#${nextKey++}`); name = imageKeys.get(src); }
   const key = `${name}|${mode}|${a}`;
   let cv = tintCache.get(key);
   if (cv) return cv;

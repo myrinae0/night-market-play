@@ -13,14 +13,16 @@
 //   { kind: 'steam', slot }   food in a steamer basket
 //   { kind: 'kettle' }        the kettle (water for the noodle pot)
 //   { kind: 'pot' }           the noodles in the pot
+//   { kind: 'soup', slot }    the soup in a soup pot (part 3)
+//   { kind: 'ladle' }         the ladle: swirl it in a soup pot to stir
 //   { kind: 'sauce', id }     a sauce bottle or topping
 //   { kind: 'tray', index }   an item on the tray
 //   { kind: 'serve' }         the whole tray (by its handle)
 // A drop target: { kind: 'tray' | 'trayItem' (index) | 'trash' | 'grillSlot' (slot)
-//   | 'bowl' | 'basket' (slot) | 'wok' | 'steamBasket' (slot) | 'pot'
+//   | 'bowl' | 'basket' (slot) | 'wok' | 'steamBasket' (slot) | 'pot' | 'soupPot' (slot)
 //   | 'customer' (idx in g.line) | 'dog' (Chimaek, level 9 on) }
 import { ITEMS } from './data.js';
-import { canSauce, grillState, wokState, steamState, potState, potBoiling } from './logic.js';
+import { canSauce, grillState, wokState, steamState, potState, potBoiling, soupState } from './logic.js';
 import * as G from './game.js';
 
 export const TAP_DIST = 5; // art px: less movement than this is a tap
@@ -44,6 +46,7 @@ export function flickAction(p) {
   if (p.kind === 'grill') return 'flip';
   if (p.kind === 'wok') return 'toss';
   if (p.kind === 'steam') return 'lift';
+  if (p.kind === 'soup') return 'stir';
   if (p.kind === 'serve') return 'serve';
   return null;
 }
@@ -70,6 +73,7 @@ export function accepts(g, p, t) {
       if (k === 'wok') return t.kind === 'wok' && !g.wok;
       if (k === 'steam') return t.kind === 'steamBasket' && g.steamer[t.slot] === null;
       if (k === 'pot') return t.kind === 'pot' && potBoiling(g.pot) && !g.pot.item;
+      if (k === 'soup') return t.kind === 'soupPot' && g.soup[t.slot] === null;
       return false;
     }
     case 'grill': {
@@ -89,6 +93,12 @@ export function accepts(g, p, t) {
       return t.kind === 'tray' && !b.lid && (trayRoom(g) || steamState(b, g.cook.steam) === 'burnt');
     }
     case 'kettle': return t.kind === 'pot' && !g.pot;
+    case 'soup': {
+      const s = g.soup[p.slot];
+      if (!s) return false;
+      return t.kind === 'trash' || (t.kind === 'tray' && (trayRoom(g) || soupState(s, g.cook.soup) === 'burnt'));
+    }
+    case 'ladle': return t.kind === 'soupPot' && !!g.soup[t.slot] && soupState(g.soup[t.slot], g.cook.soup) !== 'burnt';
     case 'pot': return !!(g.pot && g.pot.item) && (t.kind === 'trash' || (t.kind === 'tray' && (trayRoom(g) || potState(g.pot, g.cook.pot) === 'burnt')));
     case 'sauce': return t.kind === 'trayItem' && !!g.tray[t.index] && canSauce(g.tray[t.index], p.id);
     case 'tray': return t.kind === 'trash' && !!g.tray[p.index];
@@ -109,6 +119,7 @@ export function drop(g, p, t) {
       if (k === 'fry') return G.fryBatter(g);
       if (k === 'steam') return G.steamAdd(g, p.item, t.slot);
       if (k === 'pot') return G.potAdd(g, p.item);
+      if (k === 'soup') return G.soupAdd(g, p.item, t.slot);
       return G.wokStart(g, p.item);
     }
     case 'grill': return t.kind === 'trash' ? G.discard(g, 'grill', p.slot) : G.grillTake(g, p.slot);
@@ -119,6 +130,8 @@ export function drop(g, p, t) {
     case 'steam': return t.kind === 'trash' ? G.discard(g, 'steamer', p.slot) : G.steamTake(g, p.slot);
     case 'kettle': return G.potWater(g);
     case 'pot': return t.kind === 'trash' ? G.discard(g, 'pot', 0) : G.potTake(g);
+    case 'soup': return t.kind === 'trash' ? G.discard(g, 'soup', p.slot) : G.soupTake(g, p.slot);
+    case 'ladle': return G.soupStir(g, t.slot);
     case 'sauce': return G.applySauce(g, t.index, p.id);
     case 'tray': return G.trashTray(g, p.index);
     case 'serve': return !!G.serve(g, t.idx);
@@ -151,7 +164,7 @@ export function dragHint(p) {
     case 'bin': {
       const k = ITEMS[p.item]?.kind;
       return k === 'grill' ? 'DRAG IT ONTO THE GRILL' : k === 'fry' ? 'DRAG IT INTO THE BATTER' : k === 'steam' ? 'DRAG IT INTO A BASKET'
-        : k === 'pot' ? 'DRAG IT INTO THE POT' : 'DRAG IT INTO THE WOK';
+        : k === 'pot' || k === 'soup' ? 'DRAG IT INTO THE POT' : 'DRAG IT INTO THE WOK';
     }
     case 'grill': return 'TAP IT TO FLIP IT';
     case 'bowl': return 'DRAG IT INTO A BASKET';
@@ -161,6 +174,8 @@ export function dragHint(p) {
     case 'steam': return 'DRAG IT TO THE TRAY';
     case 'kettle': return 'DRAG IT ONTO THE POT';
     case 'pot': return 'DRAG IT TO THE TRAY';
+    case 'soup': return 'TAP IT TO STIR IT';
+    case 'ladle': return 'SWIRL IT IN THE SOUP';
     case 'sauce': return 'DRAG IT ONTO THE FOOD';
     case 'tray': return 'DRAG TO THE BIN TO TOSS';
     case 'serve': return 'TAP SERVE TO HAND IT OVER';
@@ -172,7 +187,7 @@ export function dragHint(p) {
 // `t` is the target under the finger, if any (it did not accept the drop).
 export function missHint(g, p, t) {
   const full = g.tray.length >= g.trayMax;
-  if (t && t.kind === 'tray' && full && ['ready', 'grill', 'basket', 'wok', 'steam', 'pot'].includes(p.kind)) return 'TRAY IS FULL';
+  if (t && t.kind === 'tray' && full && ['ready', 'grill', 'basket', 'wok', 'steam', 'pot', 'soup'].includes(p.kind)) return 'TRAY IS FULL';
   switch (p.kind) {
     case 'ready': return 'DROP IT ON THE TRAY';
     case 'bin': {
@@ -181,12 +196,14 @@ export function missHint(g, p, t) {
       if (k === 'fry') return g.fryer.bowl ? 'THE BOWL IS BUSY' : 'DROP IT IN THE BATTER';
       if (k === 'steam') return t && t.kind === 'steamBasket' ? 'THAT BASKET IS FULL' : g.steamer.every(Boolean) ? 'BASKETS FULL' : 'DROP IT IN A BASKET';
       if (k === 'pot') return !g.pot ? 'ADD WATER FIRST' : g.pot.item ? 'THE POT IS BUSY' : !potBoiling(g.pot) ? 'WAIT FOR THE BOIL' : 'DROP IT IN THE POT';
+      if (k === 'soup') return t && t.kind === 'soupPot' ? 'THAT POT IS BUSY' : g.soup.every(Boolean) ? 'THE POT IS FULL' : 'DROP IT IN THE POT';
       return g.wok ? 'THE WOK IS BUSY' : 'DROP IT IN THE WOK';
     }
     case 'steam': return g.steamer[p.slot]?.lid ? 'TAP IT TO LIFT THE LID' : 'DROP IT ON THE TRAY';
     case 'lid': return t && t.kind === 'steamBasket' ? (g.steamer[t.slot] ? 'IT HAS A LID' : 'PUT FOOD IN FIRST') : 'DROP IT ON A BASKET';
     case 'kettle': return g.pot ? 'THERE IS WATER IN IT' : 'DROP IT ON THE POT';
-    case 'grill': case 'basket': case 'wok': case 'pot': return 'DROP IT ON THE TRAY';
+    case 'grill': case 'basket': case 'wok': case 'pot': case 'soup': return 'DROP IT ON THE TRAY';
+    case 'ladle': return g.soup.some(Boolean) ? 'SWIRL IT IN THE SOUP' : 'COOK TTEOKGUK FIRST';
     case 'bowl': return g.fryer.baskets.every(Boolean) ? 'BASKETS FULL' : 'DROP IT IN A BASKET';
     case 'sauce': return g.tray.some((it) => canSauce(it, p.id)) ? 'DROP IT ON THE FOOD' : G.sauceHint(g, p.id);
     case 'serve': return G.waiting(g).length ? 'TAP SERVE, OR DROP IT ON A GUEST' : null;

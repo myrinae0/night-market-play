@@ -29,6 +29,16 @@ Made for this game (MIT, see LICENSE):
   CC0 or CC-BY 16 x 16 sprite for them was found (searched Nov 13: OpenGameArt,
   itch.io free packs, Kenney). Mandu and buns now use the pack's own sprites;
   their raw dough is a recolour made at run time.
+- **Part 3** (`src/art.js`): Eoreum, the long winter (a carp of clear river
+  ice floating upright, with icicle fins, a crown of frost and a crack down one
+  side), an original design inspired by the mood of hand-drawn Japanese fantasy
+  films and not based on any existing character; tteokguk (rice cake soup on
+  the food pack's soup bowl shape and colours, as ramyeon is), raw sliced rice
+  cakes and seaweed (gim), drawn in code in the pack's style. The pack in
+  `assets/food` has no soup or sliced rice cake sprite (checked Nov 13). The
+  iron soup pot, the ladle, snow, frost, the cooling bar and the ending scenes
+  are drawn in code too. The winter variation of the music is synthesized like
+  the rest.
 - Chimaek the Shiba (a 16 x 16 sprite in `src/sprites.js`, with her back turned
   when she refuses a treat), the barley tea and beer sprites, the market scene,
   rain, the festival moon and lanterns, snow and frost, stall, stations, wok,
@@ -42,7 +52,7 @@ Made for this game (MIT, see LICENSE):
 - All sound: synthesized with WebAudio at run time, no audio files. Music in
   `src/music.js`, market ambience (crowd, wind, far-off sizzle, wind chimes, rain)
   in `src/ambience.js`, sound effects in `src/audio.js`.
-- The story, parts 1 and 2 (`src/story.js`, `src/spirits.js`, written out in
+- The story, parts 1, 2 and 3 (`src/story.js`, `src/spirits.js`, written out in
   STORY.md).
 
 Rejected while sourcing: "64 16x16 food sprites" on OpenGameArt (uploaded by a third
