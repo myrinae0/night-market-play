@@ -9,11 +9,11 @@ import { drawItem, drawCustomer, drawShiba, drawPortrait, starIcon, lockIcon, co
 import { SPIRITS, SPIRIT_IDS } from './spirits.js';
 import { SCENES, speakerName, afterSceneFor } from './story.js';
 import {
-  drawGame, drawMarket, drawRain, awningAndCounter, hud, tapMode, SCENE_H, COUNTER_Y, lidArt, kettleArt, inScene,
+  drawGame, drawMarket, drawRain, awningAndCounter, hud, tapMode, SCENE_H, COUNTER_Y, lidArt, kettleArt, inScene, stallFront,
 } from './render.js';
 import { drawParts } from './fx.js';
 import { resetRegistry, clearHits, hit, dim, panel, button, toggle, wrap, withOrigin } from './ui.js';
-import { LAY, wideRight, centerBlock } from './layout.js';
+import { LAY, wideRight, centerBlock, computeLayout } from './layout.js';
 
 // Wooden floor planks over a screen rect (default: everything below y0).
 const woodFloor = (y0 = SCENE_H, x0 = 0, w = W) => {
@@ -173,16 +173,33 @@ export function sceneBlockH(sc) {
 // (box) and the note at the bottom (note: centre x, y). `now` is the box and
 // answers' height on screen, `blockH` the scene's tallest (sceneBlockH).
 export function sceneLayout(W, H, mode, blockH, now = blockH) {
-  if (mode === 'wide') { // the spirit at the counter on the left, the box on the right
+  if (mode === 'wide') {
+    // The spirit, drawn big, at the counter on the left; the box and its
+    // answers in the middle of the right column.
     const RW = wideRight(W), LW = W - RW;
     const S = { w: W, h: H, cy: H - 18, d: Math.floor((LW - 180) / 2), sw: LW };
-    // the box and its answers end just above the note at the bottom
-    return { S, box: { x: LW + Math.floor((RW - DLG.w) / 2), y: Math.max(36, H - 20 - blockH) }, note: { x: LW + Math.floor(RW / 2), y: H - 14 } };
+    const scale = Math.max(4, Math.min(7, Math.floor((S.cy - 50) / 16)));
+    const top = 36, room = H - 20 - top;
+    return { S, scale, board: null, box: { x: LW + Math.floor((RW - DLG.w) / 2), y: top + Math.max(0, Math.floor((room - blockH) / 2)) }, note: { x: LW + Math.floor(RW / 2), y: H - 14 } };
   }
-  const y = Math.max(126, Math.round(H - 20 - now));
+  // Portrait: the box and its answers sit low with the counter riding just
+  // above them, the spirit drawn bigger when there is room. The sky gets no
+  // more than on the game screen (plus the spirit's extra height); what is left
+  // goes to the stall's front at the bottom, with its menu board.
+  const cy0 = H - 20 - blockH - 26; // the counter over the scene's tallest box
+  const gameCy = computeLayout(W, H, 'portrait').scene.cy;
+  const scale = Math.max(4, Math.min(6, Math.floor((Math.min(cy0, gameCy + 32) - 44) / 16)));
+  const cyCap = Math.max(140, Math.min(cy0, gameCy + 16 * (scale - 4)));
+  let boardH = Math.max(0, H - 20 - (cyCap + 26 + blockH));
+  if (boardH < 44) boardH = 0; // too short for the board: the street keeps it
+  // With a board the counter stays put (a short line leaves a little more of the
+  // stall's front showing); without one it rides just above the box.
+  const y = boardH ? cyCap + 26 : Math.max(126, Math.round(H - 20 - now));
   const cy = y - 26;
   const S = { w: W, h: H, cy, d: Math.floor((W - 180) / 2), sw: W };
-  return { S, box: { x: Math.floor((W - DLG.w) / 2), y }, note: { x: Math.floor(W / 2), y: H - 14 } };
+  // the board sits in the middle of what the box and answers leave free
+  const board = boardH ? { top: y + Math.round(now) + 4, h: H - 22 - (y + Math.round(now) + 4) } : null;
+  return { S, scale, board, box: { x: Math.floor((W - DLG.w) / 2), y }, note: { x: Math.floor(W / 2), y: H - 14 } };
 }
 function sceneScreen(app) {
   const d = app.dlg, t = app.time, sc = d.scene;
@@ -190,12 +207,13 @@ function sceneScreen(app) {
   const frost = !!sc.frost && d.pc >= (sc.frostAt || 0);
   const want = dlgLineH(d.cur);
   const boxH = Math.round(app.dlgH && Math.abs(app.dlgH - want) > 0.5 ? app.dlgH : want);
-  const { S, box, note } = sceneLayout(W, H, LAY.mode, sceneBlockH(sc), boxH + Math.round(app.dlgCH || 0));
+  const { S, box, note, scale, board } = sceneLayout(W, H, LAY.mode, sceneBlockH(sc), boxH + Math.round(app.dlgCH || 0));
   DLG.x = box.x; DLG.y = box.y;
   drawMarket(t, { rain: !!def?.rain, festival: !!def?.festival && !sc.after, frost }, S);
-  if (sc.spirit) inScene(() => drawCustomer(sc.spirit, 98, COUNTER_Y + 2, { t }), S);
+  if (sc.spirit) inScene(() => drawCustomer(sc.spirit, 98, COUNTER_Y + 2, { t, scale }), S);
   if (def?.rain) drawRain(t, S);
   awningAndCounter(t, { react: sc.dog || SPIRITS[sc.spirit]?.dog || null, frost }, S, S.h);
+  if (board) stallFront(S, { level: def ? sc.level : 13, def: def || {}, time: t }, board);
   rbox(4, 18, 122, 13, C.ink);
   text(`NIGHT ${sc.level}: ${sc.title.toUpperCase()}`, 8, 22, { color: C.gold });
   hit(0, 14, W, H - 14, () => app.dlgTap(), 'dialog');

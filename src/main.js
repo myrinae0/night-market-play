@@ -4,7 +4,7 @@ import { W, H, C, setCtx, setSize } from './gfx.js';
 import { LEVELS, COOK, ITEMS, SHOP_FROM_LEVEL } from './data.js';
 import { grillState, fryState, levelDef, buyUpgrade, upgradeById, nightPay, scoreServe, potBoiling, isUnlocked } from './logic.js';
 import * as G from './game.js';
-import { PANEL_Y, COUNTER_Y, tapMode, guestX, grillSlotX, basketX, WOK_CX, steamX, POT_CX } from './render.js';
+import { boxGeom, COUNTER_Y, tapMode, guestX, grillSlotX, basketX, WOK_CX, steamX, POT_CX } from './render.js';
 import { drawFrame, lineTyped, choicesH, choiceBox, dlgLineH, defaultTitlePage, TITLE_PAGES, logPages } from './screens.js';
 import { computeView, setLayout, LAY } from './layout.js';
 import { designToScreen } from './ui.js';
@@ -231,6 +231,8 @@ const app = {
 };
 
 // ---------- events -> sound and juice ----------
+// Where the cooking box's contents start (station particles are placed from it).
+const BY = () => boxGeom().gy;
 const slotX = (g, station, slot) => (station === 'grill' ? grillSlotX(g, slot) : station === 'fryer' ? basketX(slot)
   : station === 'steamer' ? steamX(slot) : station === 'pot' ? POT_CX : WOK_CX);
 // A spirit's memory waits until their reaction bubble is gone (t < 0 is hidden).
@@ -245,20 +247,20 @@ function handleEvents() {
     else if (e.type === 'sauced') { bounce(app.fx, `tray:${e.index}`); spawn(app.fx, 'tray', 18 + e.index * 30, 330, 'drip', 6); }
     else if (e.type === 'place') {
       const x = slotX(g, e.station, e.slot);
-      spawn(app.fx, e.station, x, PANEL_Y + 56, e.station === 'fryer' ? 'bubble' : 'spark', 10);
+      spawn(app.fx, e.station, x, BY() + 10, e.station === 'fryer' ? 'bubble' : 'spark', 10);
       bounce(app.fx, `${e.station === 'fryer' ? 'fry' : e.station}:${e.slot}`);
-    } else if (e.type === 'waste') spawn(app.fx, e.station, slotX(g, e.station, e.slot), PANEL_Y + 56, 'blacksmoke', 8);
+    } else if (e.type === 'waste') spawn(app.fx, e.station, slotX(g, e.station, e.slot), BY() + 10, 'blacksmoke', 8);
     else if (e.type === 'toss') {
       bounce(app.fx, 'wok:0');
-      spawn(app.fx, 'wok', WOK_CX, PANEL_Y + 80, e.spill ? 'drip' : 'spark', e.spill ? 10 : 8);
-      spawn(app.fx, 'wok', WOK_CX, PANEL_Y + 70, 'steam', 3);
+      spawn(app.fx, 'wok', WOK_CX, BY() + 34, e.spill ? 'drip' : 'spark', e.spill ? 10 : 8);
+      spawn(app.fx, 'wok', WOK_CX, BY() + 24, 'steam', 3);
       if (e.spill) app.fx.shake = 0.15;
     } else if (e.type === 'scorch') toast(app.fx, 'SCORCHING! TOSS IT!');
     else if (e.type === 'lid') {
       bounce(app.fx, `steamer:${e.slot}`);
-      if (!e.on) spawn(app.fx, 'steamer', steamX(e.slot), PANEL_Y + 70, 'steam', 10); // a puff as the lid comes off
+      if (!e.on) spawn(app.fx, 'steamer', steamX(e.slot), BY() + 24, 'steam', 10); // a puff as the lid comes off
     } else if (e.type === 'boiled') {
-      spawn(app.fx, 'pot', POT_CX, PANEL_Y + 74, 'steam', 8);
+      spawn(app.fx, 'pot', POT_CX, BY() + 28, 'steam', 8);
       if (G.currentStation(g).id !== 'pot') toast(app.fx, 'THE WATER IS BOILING', true);
     }
     else if (e.type === 'arrive') {
@@ -325,31 +327,31 @@ function ambient(dt) {
     cooking += 1;
     const st = grillState(it, g.cook.grill);
     const x = grillSlotX(g, i) + (Math.random() - 0.5) * 24;
-    if (Math.random() < dt * (st === 'burnt' ? 14 : 6)) spawn(app.fx, 'grill', x, PANEL_Y + 52, st === 'burnt' ? 'blacksmoke' : 'smoke');
-    if (Math.random() < dt * 4) spawn(app.fx, 'grill', x, PANEL_Y + 62, 'spark');
+    if (Math.random() < dt * (st === 'burnt' ? 14 : 6)) spawn(app.fx, 'grill', x, BY() + 6, st === 'burnt' ? 'blacksmoke' : 'smoke');
+    if (Math.random() < dt * 4) spawn(app.fx, 'grill', x, BY() + 16, 'spark');
   });
   g.fryer.baskets.forEach((it, i) => {
     if (!it) return;
     cooking += 1;
     const x = basketX(i) + (Math.random() - 0.5) * 50;
     const st = fryState(it, g.cook.fry);
-    if (Math.random() < dt * 30) spawn(app.fx, 'fryer', x, PANEL_Y + 60 + Math.random() * 20, 'bubble');
-    if (Math.random() < dt * (st === 'burnt' ? 12 : 4)) spawn(app.fx, 'fryer', x, PANEL_Y + 52, st === 'burnt' ? 'blacksmoke' : 'steam');
+    if (Math.random() < dt * 30) spawn(app.fx, 'fryer', x, BY() + 14 + Math.random() * 20, 'bubble');
+    if (Math.random() < dt * (st === 'burnt' ? 12 : 4)) spawn(app.fx, 'fryer', x, BY() + 6, st === 'burnt' ? 'blacksmoke' : 'steam');
   });
   if (g.wok) {
     cooking += 1;
     const x = WOK_CX + (Math.random() - 0.5) * 40;
-    if (Math.random() < dt * (g.wok.scorch > 0 ? 16 : 3)) spawn(app.fx, 'wok', x, PANEL_Y + 74, g.wok.scorch > 0 ? 'blacksmoke' : 'steam');
+    if (Math.random() < dt * (g.wok.scorch > 0 ? 16 : 3)) spawn(app.fx, 'wok', x, BY() + 28, g.wok.scorch > 0 ? 'blacksmoke' : 'steam');
   }
   g.steamer.forEach((b, i) => {
     if (!b || !b.lid) return;
     cooking += 1;
-    if (Math.random() < dt * 5) spawn(app.fx, 'steamer', steamX(i) + (Math.random() - 0.5) * 50, PANEL_Y + 66, 'steam');
+    if (Math.random() < dt * 5) spawn(app.fx, 'steamer', steamX(i) + (Math.random() - 0.5) * 50, BY() + 20, 'steam');
   });
   if (g.pot) {
     cooking += 1;
     const x = POT_CX + (Math.random() - 0.5) * 70;
-    if (Math.random() < dt * (potBoiling(g.pot) ? 8 : 2)) spawn(app.fx, 'pot', x, PANEL_Y + 74, 'steam');
+    if (Math.random() < dt * (potBoiling(g.pot) ? 8 : 2)) spawn(app.fx, 'pot', x, BY() + 28, 'steam');
   }
   crackleT -= dt;
   if (cooking && crackleT <= 0) {

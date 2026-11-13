@@ -13,8 +13,6 @@ export const MIN = { portrait: { w: 180, h: 390 }, wide: { w: 360, h: 300 } };
 export const WIDE_ASPECT = 0.75;
 // Design rows of the game screen.
 export const D = { hud: 14, sceneH: 158, counterY: 140, tabsY: 158, panelY: 172, panelH: 146, trayY: 318, trayH: 72 };
-// How much taller than 146 a station panel may get (the rest goes to the street).
-export const PANEL_EXTRA_MAX = 24;
 // The right-hand column in wide mode: at least 180, about half, at most 240.
 export const wideRight = (W) => Math.max(180, Math.min(240, Math.floor(W / 2), W - 180));
 
@@ -46,38 +44,57 @@ export function computeView(vw, vh, dpr = 1, inset = {}) {
 
 // The game screen's regions for a W x H content area.
 //   scene: the street, sky and counter. w x h from the top left; the counter
-//          top is at cy; the guests, their orders and Chimaek stand in the
-//          service area (sw wide), drawn in design coordinates moved by
-//          (d, cy - 140).
+//          top is at cy and its front runs down to h; the guests, their orders
+//          and Chimaek stand in the service area (sw wide), drawn in design
+//          coordinates moved by (d, cy - 140).
 //   tabs, panel, tray: screen rects. panel/tray carry (tx, ty), the move from
 //          design coordinates (180 wide, panel at y 172, tray at y 318).
+//          A taller panel gets a tiled wall above the shelf (wall), room
+//          between the shelf and the cooking box (gap) and a taller cooking
+//          box (bx); a taller tray, room around it (pad).
 //   work: where a sideways swipe switches stations.
+// Extra height is shared out, so the sky never takes most of it:
+export const SKY_SHARE = 0.3; // of the extra past the first 16 px
+export function splitPanel(pe) {
+  const bx = Math.min(64, Math.floor(pe * 0.5));
+  const gap = Math.min(24, Math.floor(pe * 0.25));
+  return { bx, gap, wall: pe - bx - gap };
+}
 export function computeLayout(W, H, mode = 'portrait') {
   if (mode === 'wide') {
+    // The kitchen takes the right column top to bottom; the street fills the
+    // left one with the counter a little below the middle and the stall's
+    // front (its menu board) under it.
     const RW = wideRight(W), LW = W - RW;
-    const exP = Math.max(0, Math.min(PANEL_EXTRA_MAX, H - D.hud - 14 - D.panelH - D.trayH));
-    const blockH = 14 + D.panelH + exP + D.trayH;
-    const by = H - blockH;
-    const scene = { w: W, h: H, cy: H - 18, d: Math.floor((LW - 180) / 2), sw: LW };
-    const tabs = { x: LW, y: by, w: RW, h: 14 };
-    const panel = { x: LW, y: by + 14, w: RW, h: D.panelH + exP };
-    const tray = { x: LW, y: panel.y + panel.h, w: RW, h: H - panel.y - panel.h };
-    return finish({ mode, W, H, LW, RW, scene, tabs, panel, tray, exP, work: { x: LW, y: by, w: RW, h: H - by } });
+    const room = H - D.hud - 14 - D.panelH - D.trayH;
+    const pad = Math.min(24, Math.floor(room * 0.15));
+    const pe = room - pad;
+    const cy = Math.min(H - 18, D.hud + Math.max(126, Math.round((H - D.hud) * 0.52)));
+    const scene = { w: LW, h: H, cy, d: Math.floor((LW - 180) / 2), sw: LW };
+    const tabs = { x: LW, y: D.hud, w: RW, h: 14 };
+    const panel = { x: LW, y: D.hud + 14, w: RW, h: D.panelH + pe, ...splitPanel(pe) };
+    const tray = { x: LW, y: panel.y + panel.h, w: RW, h: H - panel.y - panel.h, pad };
+    return finish({ mode, W, H, LW, RW, scene, tabs, panel, tray, work: { x: LW, y: D.hud, w: RW, h: H - D.hud } });
   }
   const E = Math.max(0, H - DESIGN.h);
-  const exP = Math.min(PANEL_EXTRA_MAX, Math.floor(E / 4));
-  const sceneH = D.sceneH + E - exP;
-  const scene = { w: W, h: sceneH, cy: sceneH - 18, d: Math.floor((W - 180) / 2), sw: W };
+  const more = Math.max(0, E - 16);
+  const sky = Math.min(E, 16) + Math.floor(more * SKY_SHARE);
+  const front = Math.min(16, Math.floor(more * 0.12)); // a taller counter front
+  const pad = Math.min(16, Math.floor(more * 0.1));
+  const pe = E - sky - front - pad;
+  const cy = D.counterY + sky;
+  const sceneH = cy + 18 + front;
+  const scene = { w: W, h: sceneH, cy, d: Math.floor((W - 180) / 2), sw: W };
   const tabs = { x: 0, y: sceneH, w: W, h: 14 };
-  const panel = { x: 0, y: sceneH + 14, w: W, h: D.panelH + exP };
-  const tray = { x: 0, y: panel.y + panel.h, w: W, h: H - panel.y - panel.h };
-  return finish({ mode, W, H, LW: W, RW: W, scene, tabs, panel, tray, exP, work: { x: 0, y: sceneH, w: W, h: H - sceneH } });
+  const panel = { x: 0, y: sceneH + 14, w: W, h: D.panelH + pe, ...splitPanel(pe) };
+  const tray = { x: 0, y: panel.y + panel.h, w: W, h: H - panel.y - panel.h, pad };
+  return finish({ mode, W, H, LW: W, RW: W, scene, tabs, panel, tray, work: { x: 0, y: sceneH, w: W, h: H - sceneH } });
 }
 function finish(L) {
   const { panel, tray, scene } = L;
   const cx = (r) => r.x + Math.floor((r.w - 180) / 2);
-  panel.tx = cx(panel); panel.ty = panel.y + Math.floor(L.exP / 3) - D.panelY;
-  tray.tx = cx(tray); tray.ty = tray.y - D.trayY;
+  panel.tx = cx(panel); panel.ty = panel.y + panel.wall - D.panelY;
+  tray.tx = cx(tray); tray.ty = tray.y + Math.floor(tray.pad / 2) - D.trayY;
   // The panel's whole rect in design coordinates (for backgrounds).
   panel.local = { x: panel.x - panel.tx, y: panel.y - panel.ty, w: panel.w, h: panel.h };
   tray.local = { x: tray.x - tray.tx, y: tray.y - tray.ty, w: tray.w, h: tray.h };

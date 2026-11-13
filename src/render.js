@@ -10,7 +10,7 @@
 //                   LIFT / SERVE buttons (the "Tap controls" setting)
 import { W, H, C, R, rbox, text, tw, mix } from './gfx.js';
 import { ITEMS, SAUCES, STATIONS, STATION_SAUCES, WOK_ITEMS, STEAM_ITEMS, TREAT } from './data.js';
-import { grillState, fryState, wokState, steamState, potState, potBoiling, scoreServe, canSauce } from './logic.js';
+import { grillState, fryState, wokState, steamState, potState, potBoiling, scoreServe, canSauce, menuFor } from './logic.js';
 import {
   drawItem, drawSauce, coinIcon, lockIcon, speakerIcon, gearIcon, heartIcon, drawCustomer, drawShiba,
 } from './sprites.js';
@@ -225,6 +225,33 @@ export function counterDecor(t, dogOpts = {}) {
     text(str, 46 + w / 2, COUNTER_Y + 9, { color: C.cream, align: 'center', outline: null });
   }
   if (!dogOpts.none) drawShiba(20, COUNTER_Y + 2, { t, react: dogOpts.react || null, mood: dogOpts.mood || 'wait' });
+}
+// A tall counter front (side by side) holds the stall's menu board: tonight's
+// dishes and drinks with their prices (the special marked X2). Screen
+// coordinates, under the counter's top.
+export function stallFront(S, g, area = { top: S.cy + 18, h: S.h - S.cy - 18 }) {
+  const { top, h } = area;
+  if (h < 44 || !g) return;
+  const items = menuFor(g.level);
+  const cols = S.sw >= 220 ? 3 : 2, cw = 46;
+  const bw = cols * cw + 12;
+  const rowsFit = Math.max(1, Math.floor((h - 34) / 19));
+  const rows = Math.min(rowsFit, Math.ceil(items.length / cols));
+  const bh = 24 + rows * 19;
+  const bx = Math.round(S.d + 90 - bw / 2), by = top + Math.max(6, Math.floor((h - bh) / 2) - 2);
+  if (top === S.cy + 18) { R(bx + 6, top, 1, by - top, C.woodDD); R(bx + bw - 7, top, 1, by - top, C.woodDD); } // it hangs from the counter
+  rbox(bx, by + 1, bw, bh, C.ink);
+  rbox(bx, by, bw, bh, '#2c4a34', C.woodDD);
+  R(bx + 2, by + 2, bw - 4, 1, mix('#2c4a34', C.white, 0.15));
+  text('MENU', bx + bw / 2, by + 5, { color: C.cream, align: 'center', outline: null });
+  items.slice(0, rows * cols).forEach((id, i) => {
+    const x = bx + 6 + (i % cols) * cw, y = by + 15 + Math.floor(i / cols) * 19;
+    drawItem(id, x, y, { cook: 'done' });
+    text(String(ITEMS[id].price), x + 19, y + 6, { color: id === g.def.special ? C.yellow : C.cream, outline: null });
+    if (id === g.def.special) text('X2', x + 19 + tw(String(ITEMS[id].price)) + 3, y + 6, { color: C.yellow, outline: null });
+  });
+  // paper lanterns at the corners of the stall front
+  if (h >= 70) for (const lx of [Math.max(8, bx - 22), Math.min(S.sw - 15, bx + bw + 14)]) lantern(lx, top + 8, g.time);
 }
 // Draws fn() in the service area: design coordinates moved to the counter.
 export function inScene(fn, S = LAY.scene) {
@@ -519,13 +546,61 @@ function tabs(app) {
 }
 
 // ---------- station panels ----------
+// The cooking box under the shelf (design coordinates): its top b0, how much
+// taller than 98 it is (bx), and gy, where its contents start (centred in it).
+export function boxGeom() {
+  const P = LAY.panel, bx = P.bx || 0;
+  const b0 = PANEL_Y + 46 + (P.gap || 0);
+  return { b0, bx, gy: b0 + (bx >> 1) };
+}
 // The panel's background fills its whole rect (wider and taller than the
-// 180 x 146 design on big screens); the station sits in the middle.
+// 180 x 146 design on big screens): a tiled wall above the shelf when there
+// is room, then wood; the station sits in the middle.
 function panelBg(ox) {
   const P = LAY.panel.local;
   R(ox + P.x, P.y, P.w, P.h, C.woodDD);
   for (let y = PANEL_Y + 10 - 12 * Math.ceil((PANEL_Y - P.y) / 12); y < P.y + P.h; y += 12) R(ox + P.x, y, P.w, 1, mix(C.woodDD, C.ink, 0.4));
+  const wall = PANEL_Y - P.y;
+  if (wall >= 6) kitchenWall(ox + P.x, P.y, P.w, wall - 2);
   R(ox + P.x, P.y, P.w, 2, mix(C.woodDD, C.gold, 0.25));
+}
+// White kitchen tiles behind the shelf, with utensils hung on a rail.
+const TILE = '#d9d4c7', TILE_D = '#b5ae9e';
+function kitchenWall(x0, y0, w, h) {
+  R(x0, y0, w, h, TILE_D);
+  for (let y = y0 + 1; y < y0 + h; y += 8) for (let x = x0 + ((((y - y0) >> 3) % 2) * 4) - 4; x < x0 + w; x += 8) R(x + 1, y, 6, Math.min(6, y0 + h - y), TILE);
+  R(x0, y0 + h, w, 2, C.ink);
+  if (h < 22) return;
+  const ry = y0 + 4;
+  R(x0, ry, w, 2, C.steelD); R(x0, ry, w, 1, C.steel); // the rail
+  const kinds = ['ladle', 'spatula', 'whisk', 'tongs', 'pan'];
+  for (let i = 0, x = x0 + 14; x < x0 + w - 12; i++, x += 26) utensil(kinds[i % kinds.length], x, ry + 2, Math.min(h - 8, 30));
+  if (h < 56) return;
+  // a shelf of jars and bowls under them
+  const sy = y0 + h - 12;
+  R(x0, sy, w, 3, C.woodD); R(x0, sy, w, 1, C.wood); R(x0, sy + 3, w, 1, C.ink);
+  const JARS = [[C.red, 9], [C.gold, 7], [C.greenD, 10], [C.cream, 6], [C.orange, 8], [C.woodL, 9]];
+  for (let i = 0, x = x0 + 6; x < x0 + w - 12; i++) {
+    const [c, jh] = JARS[i % JARS.length];
+    if (i % 4 === 3) { R(x, sy - 4, 12, 4, C.ink); R(x + 1, sy - 4, 10, 3, C.cream); R(x + 1, sy - 4, 10, 1, C.white); x += 17; continue; } // a stack of bowls
+    R(x, sy - jh, 8, jh, C.ink); R(x + 1, sy - jh + 2, 6, jh - 2, c); R(x + 1, sy - jh, 6, 2, C.steelD); R(x + 2, sy - jh + 3, 1, jh - 4, mix(c, C.white, 0.4));
+    x += 13;
+  }
+}
+function utensil(kind, x, y, len) {
+  R(x, y, 1, 3, C.ink); // the hook
+  if (kind === 'pan') { // a small pan, hung by its handle
+    const r = Math.min(8, len >> 2);
+    R(x, y + 3, 2, len - 2 * r - 2, C.woodD);
+    R(x - r, y + len - 2 * r, 2 * r + 2, 2 * r, C.ink); R(x - r + 1, y + len - 2 * r + 1, 2 * r, 2 * r - 2, C.steelD);
+    return;
+  }
+  R(x, y + 3, 1, len - 8, kind === 'whisk' ? C.steel : C.woodD);
+  const by = y + len - 6;
+  if (kind === 'ladle') { R(x - 2, by, 5, 4, C.steel); R(x - 1, by + 4, 3, 1, C.steelD); }
+  else if (kind === 'spatula') { R(x - 2, by - 1, 5, 6, C.steel); R(x - 1, by, 1, 4, C.steelD); R(x + 1, by, 1, 4, C.steelD); }
+  else if (kind === 'whisk') { R(x - 2, by - 2, 1, 6, C.steel); R(x + 2, by - 2, 1, 6, C.steel); R(x - 1, by + 4, 3, 1, C.steel); }
+  else { R(x - 1, by - 2, 1, 7, C.steel); R(x + 1, by - 2, 1, 7, C.steel); } // tongs
 }
 
 // A cooking meter: grey = raw, green = done, gold = perfect, red = burnt.
@@ -553,7 +628,8 @@ function holding(app, kind, key = null) {
 function counterPanel(app, ox, live) {
   const g = app.g, drag = !tapMode(app);
   panelBg(ox);
-  const cx = ox + 4, cy = PANEL_Y + 4;
+  const sh = (LAY.panel.gap + LAY.panel.bx) >> 1; // a taller panel: centred
+  const cx = ox + 4, cy = PANEL_Y + 4 + sh;
   rbox(cx, cy, 84, 140, '#2a6f9e');
   R(cx + 3, cy + 3, 78, 134, '#173a5a');
   R(cx + 3, cy + 3, 78, 2, C.teal);
@@ -578,7 +654,7 @@ function counterPanel(app, ox, live) {
   });
   const sx = ox + 92;
   ['kimbap', 'toast'].forEach((id, i) => {
-    const sy = PANEL_Y + 4 + i * 71;
+    const sy = PANEL_Y + 4 + sh + i * 71;
     rbox(sx, sy, 84, 66, C.wood);
     R(sx + 3, sy + 3, 78, 60, mix(C.wood, C.ink, 0.25));
     const b = bounceAmt(app.fx, `ready:${id}`);
@@ -645,21 +721,21 @@ function grillPanel(app, ox, live) {
     bin(app, ox + 52, PANEL_Y + 2, 44, 'sausage', 'SAUSAGE', { p: 0 }, live, 'sausage', () => G.grillAdd(g, 'sausage'));
   }
   sauceShelf(app, ox, STATION_SAUCES.grill, live);
-  const gy = PANEL_Y + 46;
-  rbox(ox + 3, gy, 174, 98, C.steelD);
-  R(ox + 6, gy + 3, 168, 92, '#1e1820');
+  const { b0, bx, gy } = boxGeom();
+  rbox(ox + 3, b0, 174, 98 + bx, C.steelD);
+  R(ox + 6, b0 + 3, 168, 92 + bx, '#1e1820');
   for (let x = 8; x < 172; x += 4) {
     const f = Math.sin(t * 5 + x * 0.7) * 0.5 + 0.5;
-    R(ox + x, gy + 86, 3, 8, mix(C.redD, C.orange, f * 0.8));
-    R(ox + x + 1, gy + 86, 1, 2, mix(C.orange, C.yellow, f));
+    R(ox + x, b0 + bx + 86, 3, 8, mix(C.redD, C.orange, f * 0.8));
+    R(ox + x + 1, b0 + bx + 86, 1, 2, mix(C.orange, C.yellow, f));
   }
   for (let y = gy + 8; y < gy + 44; y += 7) R(ox + 6, y, 168, 1, C.steelD);
   const pitch = grillPitch(g);
   const mw = pitch - 16;
   g.grill.forEach((it, i) => {
     const sx = ox + 6 + i * pitch, mid = sx + Math.floor(pitch / 2);
-    if (i > 0) R(sx - 1, gy + 4, 1, 82, mix(C.steelD, C.ink, 0.5));
-    const box = [sx + 1, gy + 2, pitch - 2, 84];
+    if (i > 0) R(sx - 1, b0 + 4, 1, 82 + bx, mix(C.steelD, C.ink, 0.5));
+    const box = [sx + 1, b0 + 2, pitch - 2, 84 + bx];
     if (live && drag) dst(...box, { kind: 'grillSlot', slot: i });
     if (!it) {
       text('EMPTY', mid, gy + 22, { color: C.greyDD, outline: null, align: 'center' });
@@ -715,15 +791,15 @@ function fryerPanel(app, ox, live) {
     } else hit(bx, by, 54, 32, () => G.fryDip(g), 'bowl');
   }
   sauceShelf(app, ox, STATION_SAUCES.fryer, live);
-  const fy = PANEL_Y + 46;
-  rbox(ox + 3, fy, 174, 98, C.steel);
-  R(ox + 6, fy + 3, 168, 92, C.steelD);
-  R(ox + 9, fy + 14, 162, 62, C.oilD);
-  for (let y = fy + 14; y < fy + 76; y += 2) R(ox + 9, y, 162, 1, mix(C.oil, C.oilD, (y - fy - 14) / 70));
+  const { b0, bx: ex, gy: fy } = boxGeom(); // a taller box: deeper oil
+  rbox(ox + 3, b0, 174, 98 + ex, C.steel);
+  R(ox + 6, b0 + 3, 168, 92 + ex, C.steelD);
+  R(ox + 9, fy + 14, 162, 62 + (ex - (ex >> 1)), C.oilD);
+  for (let y = fy + 14; y < fy + 76 + (ex - (ex >> 1)); y += 2) R(ox + 9, y, 162, 1, mix(C.oil, C.oilD, (y - fy - 14) / (70 + ex)));
   for (let x = 0; x < 162; x += 3) R(ox + 9 + x, fy + 14 + Math.round(Math.sin(t * 3 + x * 0.3)), 2, 1, mix(C.oil, C.yellow, 0.4));
   g.fryer.baskets.forEach((it, i) => {
     const x0 = ox + 8 + i * 84;
-    const box = [x0 + 4, fy + 2, 76, 82];
+    const box = [x0 + 4, b0 + 2, 76, 82 + ex];
     if (live && drag) dst(...box, { kind: 'basket', slot: i });
     R(x0 + 12, fy + 6, 56, 1, C.grey); R(x0 + 38, fy - 2, 4, 8, C.ink); R(x0 + 39, fy - 1, 2, 7, C.woodD);
     for (let x = x0 + 12; x <= x0 + 68; x += 6) R(x, fy + 6, 1, 40, mix(C.grey, C.oilD, 0.5));
@@ -740,7 +816,7 @@ function fryerPanel(app, ox, live) {
       if (live) hit(x0 + 12, fy + 4, 56, 44, () => G.fryLift(g, i), `lift:${i}`);
     }
   });
-  label('GOLD = PERFECT', ox + 90, fy + 86, C.cream);
+  label('GOLD = PERFECT', ox + 90, b0 + ex + 86, C.cream);
 }
 
 // The wok: one dish at a time. Each toss cooks it; toss again before it lands
@@ -753,9 +829,9 @@ function wokPanel(app, ox, live) {
     bin(app, ox + 3 + i * 32, PANEL_Y + 2, 31, ITEMS[id].raw, ITEMS[id].bin, {}, live, id, () => G.wokStart(g, id));
   });
   sauceShelf(app, ox, STATION_SAUCES.wok, live);
-  const wy = PANEL_Y + 46, cx = ox + WOK_CX;
-  rbox(ox + 3, wy, 174, 98, C.steelD);
-  R(ox + 6, wy + 3, 168, 92, '#1e1820');
+  const { b0, bx, gy: wy } = boxGeom(), cx = ox + WOK_CX;
+  rbox(ox + 3, b0, 174, 98 + bx, C.steelD);
+  R(ox + 6, b0 + 3, 168, 92 + bx, '#1e1820');
   const w = g.wok;
   const spec = g.cook.wok;
   const inAir = !!w && w.air < spec.air;
@@ -777,7 +853,7 @@ function wokPanel(app, ox, live) {
   }
   R(cx - ww / 2 - 10, top + 1, 11, 4, C.woodD); R(cx - ww / 2 - 10, top + 1, 11, 1, C.wood);
   R(cx + ww / 2 - 1, top + 1, 11, 4, C.woodD); R(cx + ww / 2 - 1, top + 1, 11, 1, C.wood);
-  const box = [ox + 20, wy + 4, 140, 76];
+  const box = [ox + 20, b0 + 4, 140, 76 + bx];
   if (live && drag) dst(...box, { kind: 'wok' });
   if (!w) {
     text('EMPTY', cx, wy + 24, { color: C.greyDD, outline: null, align: 'center' });
@@ -847,9 +923,9 @@ function steamerPanel(app, ox, live) {
   label('LIDS', rx + 15, PANEL_Y + 38);
   if (live && drag && G.freeLids(g) > 0) src(rx, PANEL_Y + 2, 31, 42, { kind: 'lid' });
   sauceShelf(app, ox, STATION_SAUCES.steamer, live);
-  const fy = PANEL_Y + 46;
-  rbox(ox + 3, fy, 174, 98, C.steelD);
-  R(ox + 6, fy + 3, 168, 92, '#1e1820');
+  const { b0, bx, gy: fy } = boxGeom();
+  rbox(ox + 3, b0, 174, 98 + bx, C.steelD);
+  R(ox + 6, b0 + 3, 168, 92 + bx, '#1e1820');
   // the water pot under the baskets, and its burner
   rbox(ox + 10, fy + 50, 160, 14, C.steel);
   R(ox + 12, fy + 52, 156, 2, mix(C.steel, C.white, 0.3));
@@ -859,7 +935,7 @@ function steamerPanel(app, ox, live) {
   }
   g.steamer.forEach((b, i) => {
     const x0 = ox + 8 + i * 84, mid = x0 + 40;
-    const box = [x0 + 4, fy + 2, 76, 82];
+    const box = [x0 + 4, b0 + 2, 76, 82 + bx];
     if (live && drag) dst(...box, { kind: 'steamBasket', slot: i });
     const by = fy + 30;
     basketArt(mid, by, false);
@@ -920,9 +996,9 @@ function potPanel(app, ox, live) {
     else hit(kx, PANEL_Y + 2, 44, 42, () => G.potWater(g), 'bin:kettle');
   }
   sauceShelf(app, ox, STATION_SAUCES.pot, live);
-  const wy = PANEL_Y + 46, cx = ox + POT_CX;
-  rbox(ox + 3, wy, 174, 98, C.steelD);
-  R(ox + 6, wy + 3, 168, 92, '#1e1820');
+  const { b0, bx, gy: wy } = boxGeom(), cx = ox + POT_CX;
+  rbox(ox + 3, b0, 174, 98 + bx, C.steelD);
+  R(ox + 6, b0 + 3, 168, 92 + bx, '#1e1820');
   const pt = g.pot, spec = g.cook.pot;
   const boiling = potBoiling(pt);
   for (let x = -40; x <= 40; x += 4) { // burner
@@ -952,7 +1028,7 @@ function potPanel(app, ox, live) {
     }
   }
   for (let y = top + 12; y < top + ph - 3; y += 6) R(cx - 41, y, 82, 1, '#4c5466');
-  const box = [ox + 20, wy + 4, 140, 76];
+  const box = [ox + 20, b0 + 4, 140, 76 + bx];
   if (live && drag) dst(...box, { kind: 'pot' });
   let msg, col = C.cream;
   if (!pt) { msg = drag ? 'DRAG THE KETTLE ON' : 'TAP THE KETTLE'; col = C.greyD; }
@@ -985,16 +1061,16 @@ function lockedPanel(app, ox, s) {
   const P = LAY.panel.local;
   R(ox + P.x, P.y, P.w, P.h, '#191424');
   for (let y = PANEL_Y - 4 * Math.ceil((PANEL_Y - P.y) / 4); y < P.y + P.h; y += 4) R(ox + P.x, y, P.w, 1, '#1e1830');
-  const cx = ox + 90;
-  R(cx - 9, PANEL_Y + 26, 18, 16, C.ink); R(cx - 8, PANEL_Y + 27, 16, 14, C.greyD); R(cx - 5, PANEL_Y + 30, 10, 12, C.ink); R(cx - 4, PANEL_Y + 31, 8, 11, '#191424');
-  R(cx - 14, PANEL_Y + 40, 28, 24, C.ink); R(cx - 12, PANEL_Y + 42, 24, 20, C.greyD); R(cx - 1, PANEL_Y + 47, 3, 8, C.ink);
-  text(STATIONS[s.id].name.toUpperCase(), cx, PANEL_Y + 74, { font: 'big', align: 'center', color: C.cream });
-  text(`UNLOCKS IN LEVEL ${STATIONS[s.id].unlock}`, cx, PANEL_Y + 88, { align: 'center', color: C.gold });
+  const cx = ox + 90, ly = PANEL_Y + ((LAY.panel.gap + LAY.panel.bx) >> 1);
+  R(cx - 9, ly + 26, 18, 16, C.ink); R(cx - 8, ly + 27, 16, 14, C.greyD); R(cx - 5, ly + 30, 10, 12, C.ink); R(cx - 4, ly + 31, 8, 11, '#191424');
+  R(cx - 14, ly + 40, 28, 24, C.ink); R(cx - 12, ly + 42, 24, 20, C.greyD); R(cx - 1, ly + 47, 3, 8, C.ink);
+  text(STATIONS[s.id].name.toUpperCase(), cx, ly + 74, { font: 'big', align: 'center', color: C.cream });
+  text(`UNLOCKS IN LEVEL ${STATIONS[s.id].unlock}`, cx, ly + 88, { align: 'center', color: C.gold });
   const teaser = {
     grill: 'GALBI AND SAUSAGES', fryer: 'FRIED CHICKEN AND BEER', wok: 'TOSS NOODLES AND RICE',
     steamer: 'MANDU AND STEAMED BUNS', pot: 'RAMYEON, BOILED TO ORDER',
   }[s.id];
-  if (teaser) text(teaser, cx, PANEL_Y + 100, { align: 'center', color: C.greyD });
+  if (teaser) text(teaser, cx, ly + 100, { align: 'center', color: C.greyD });
 }
 
 function drawPanel(app, idx, ox, live) {
@@ -1162,7 +1238,7 @@ function toastBox(app) {
   const ts = app.fx.toast;
   if (!ts) return;
   const w = tw(ts.str, 'big') + 12;
-  const y = PANEL_Y + 52 - Math.round(Math.min(1, ts.t * 6) * 6);
+  const y = boxGeom().gy + 6 - Math.round(Math.min(1, ts.t * 6) * 6);
   rbox(90 - w / 2, y, w, 15, ts.good ? C.greenD : C.redD);
   text(ts.str, 90, y + 4, { font: 'big', align: 'center', color: C.white });
 }
@@ -1174,7 +1250,8 @@ export function drawGame(app, reg) {
   inScene(() => drawGuests(app));
   if (g.def.rain) drawRain(app.time, S);
   awning(S);
-  counterBand(S);
+  counterBand(S, false, S.h);
+  stallFront(S, g);
   inScene(() => {
     counterDecor(app.time, { ...dogLook(g, app.time), special: g.def.special });
     drawOrders(app);
@@ -1189,11 +1266,9 @@ export function drawGame(app, reg) {
     drawParts(app.fx, 'world');
     banner(app);
   });
-  if (LAY.mode === 'wide') { // the kitchen's frame, next to the street
-    R(P.x - 3, LAY.tabs.y - 3, 3, LAY.H - LAY.tabs.y + 3, C.woodD);
-    R(P.x - 3, LAY.tabs.y - 3, LAY.W - P.x + 3, 3, C.woodD);
-    R(P.x - 4, LAY.tabs.y - 4, 1, LAY.H - LAY.tabs.y + 4, C.ink);
-    R(P.x - 4, LAY.tabs.y - 4, LAY.W - P.x + 4, 1, C.ink);
+  if (LAY.mode === 'wide') { // a post between the street and the kitchen
+    R(P.x - 3, 14, 3, LAY.H - 14, C.woodD); R(P.x - 2, 14, 1, LAY.H - 14, C.wood);
+    R(P.x - 4, 14, 1, LAY.H - 14, C.ink);
   }
   tabs(app);
   const sl = app.slide;
@@ -1207,14 +1282,14 @@ export function drawGame(app, reg) {
     } else withOrigin(P.tx, P.ty, () => drawPanel(app, g.station, 0, g.phase === 'play'), [0, PANEL_Y, 180, TRAY_Y]);
   });
   const blink = Math.floor(app.time * 2) % 2;
-  const ay = P.ty + PANEL_Y; // the switch arrows sit on the panel's edges
+  const ay = P.ty + boxGeom().gy; // the switch arrows sit on the panel's edges, by the cooking box
   if (g.station > 0) {
-    text('<', P.x + 2, ay + 70, { font: 'big', color: blink ? C.cream : C.grey });
-    hit(P.x, ay + 54, 9, 40, () => app.switchStation(-1), 'arrow');
+    text('<', P.x + 2, ay + 24, { font: 'big', color: blink ? C.cream : C.grey });
+    hit(P.x, ay + 8, 9, 40, () => app.switchStation(-1), 'arrow');
   }
   if (g.station < g.stations.length - 1) {
-    text('>', P.x + P.w - 2, ay + 70, { font: 'big', color: blink ? C.cream : C.grey, align: 'right' });
-    hit(P.x + P.w - 9, ay + 54, 9, 40, () => app.switchStation(1), 'arrow');
+    text('>', P.x + P.w - 2, ay + 24, { font: 'big', color: blink ? C.cream : C.grey, align: 'right' });
+    hit(P.x + P.w - 9, ay + 8, 9, 40, () => app.switchStation(1), 'arrow');
   }
   withOrigin(T.tx, T.ty, () => { tray(app, g.phase === 'play' && !sl); drawParts(app.fx, 'tray'); }, [0, TRAY_Y, 180, 390]);
   if (g.held && app.pointer) drawSauce(g.held, Math.round(app.pointer.x) - 16, Math.round(app.pointer.y) - 40, false, 2);
