@@ -1,6 +1,6 @@
 // Game state and player actions (no DOM). The renderer reads state; main.js
 // turns input (drags or taps) into these actions and plays the events they emit.
-import { ITEMS, SAUCES, FRY_BASKETS, STEAM_BASKETS, sauceStations, MOODS, TREAT, RUSH_GAP } from './data.js';
+import { ITEMS, SAUCES, FRY_BASKETS, STEAM_BASKETS, sauceStations, MOODS, TREAT, RUSH_GAP, COOK_TEXT } from './data.js';
 import {
   levelDef, makeOrders, newGrillItem, stepGrill, flipGrill, grillState, grillPerfect,
   newFryItem, stepFry, fryState, isPerfect, trayItem, canSauce, scoreServe, levelMax, starsFor,
@@ -116,7 +116,9 @@ export function update(g, dt) {
   g.grill.forEach((it, i) => {
     if (!it) return;
     const before = grillState(it, g.cook.grill);
+    const wasGold = isPerfect(it.sides[it.down], g.cook.grill);
     stepGrill(it, dt, g.cook.grill);
+    goldChime(g, wasGold, isPerfect(it.sides[it.down], g.cook.grill), 'grill', i);
     const after = grillState(it, g.cook.grill);
     if (before !== after) emit(g, 'sfx', { name: after === 'burnt' ? 'burn' : 'ready', station: 'grill', slot: i });
   });
@@ -132,7 +134,9 @@ export function update(g, dt) {
   g.fryer.baskets.forEach((it, i) => {
     if (!it) return;
     const before = fryState(it, g.cook.fry);
+    const wasGold = isPerfect(it.p, g.cook.fry);
     stepFry(it, dt, g.cook.fry);
+    goldChime(g, wasGold, isPerfect(it.p, g.cook.fry), 'fryer', i);
     const after = fryState(it, g.cook.fry);
     if (before !== after) emit(g, 'sfx', { name: after === 'burnt' ? 'burn' : 'ready', station: 'fryer', slot: i });
   });
@@ -147,14 +151,18 @@ export function update(g, dt) {
   g.steamer.forEach((b, i) => {
     if (!b) return;
     const before = steamState(b, g.cook.steam);
+    const wasGold = isPerfect(b.p, g.cook.steam);
     stepSteam(b, dt, g.cook.steam);
+    goldChime(g, wasGold, isPerfect(b.p, g.cook.steam), 'steamer', i);
     const after = steamState(b, g.cook.steam);
     if (before !== after) emit(g, 'sfx', { name: after === 'burnt' ? 'burn' : 'ready', station: 'steamer', slot: i });
   });
   if (g.pot) {
     const pt = g.pot;
     const wasBoiling = potBoiling(pt), before = potState(pt, g.cook.pot);
+    const wasGold = !!pt.item && isPerfect(pt.p, g.cook.pot);
     stepPot(pt, dt, g.cook.pot);
+    goldChime(g, wasGold, !!pt.item && isPerfect(pt.p, g.cook.pot), 'pot');
     if (!wasBoiling && potBoiling(pt)) {
       emit(g, 'sfx', { name: 'boil' });
       emit(g, 'boiled');
@@ -251,6 +259,17 @@ export function grillFlip(g, slot) {
   emit(g, 'sfx', { name: 'flip' });
   return true;
 }
+// Food comes off: still raw (a red toast), in the gold (a gold PERFECT! toast
+// and a chime) or in the green (a green GOOD toast).
+function tookFeedback(g, t, rawText) {
+  if (t.cook === 'raw') { emit(g, 'sfx', { name: 'nope' }); emit(g, 'toast', { text: rawText }); return; }
+  if (t.perfect) { emit(g, 'sfx', { name: 'perfect' }); emit(g, 'toast', { text: COOK_TEXT.tookPerfect, good: true, perfect: true }); return; }
+  emit(g, 'sfx', { name: 'grab' });
+  emit(g, 'toast', { text: COOK_TEXT.tookGood, good: true });
+}
+// A soft chime when food reaches the gold (a different one from 'ready', the
+// green), once per item (per side on the grill).
+const goldChime = (g, was, now, station, slot = 0) => { if (!was && now) emit(g, 'sfx', { name: 'gold', station, slot }); };
 export const WASTE_COST = 1;
 // Burnt food goes in the bin and costs the ingredient.
 function toss(g, station, slot) {
@@ -278,9 +297,7 @@ export function grillTake(g, slot) {
   const t = trayItem(it.item, st, grillPerfect(it, g.cook.grill));
   if (!trayAdd(g, t)) return false;
   g.grill[slot] = null;
-  emit(g, 'sfx', { name: t.cook === 'done' ? 'grab' : 'nope' });
-  if (t.cook === 'raw') emit(g, 'toast', { text: 'STILL RAW!' });
-  if (t.perfect) emit(g, 'toast', { text: 'PERFECT!', good: true });
+  tookFeedback(g, t, 'STILL RAW!');
   return true;
 }
 
@@ -330,9 +347,7 @@ export function fryLift(g, slot) {
   const t = trayItem('chicken', st, isPerfect(it.p, g.cook.fry));
   if (!trayAdd(g, t)) return false;
   g.fryer.baskets[slot] = null;
-  emit(g, 'sfx', { name: t.cook === 'done' ? 'grab' : 'nope' });
-  if (t.cook === 'raw') emit(g, 'toast', { text: 'NOT CRISPY YET!' });
-  if (t.perfect) emit(g, 'toast', { text: 'GOLDEN!', good: true });
+  tookFeedback(g, t, 'NOT CRISPY YET!');
   return true;
 }
 
@@ -347,6 +362,7 @@ export function wokStart(g, item) {
 }
 export function wokToss(g) {
   if (g.phase !== 'play' || !g.wok) return null;
+  const wasGold = wokPerfect(g.wok, g.cook.wok);
   const r = tossWok(g.wok, g.cook.wok);
   if (r === 'burnt') { emit(g, 'sfx', { name: 'nope' }); emit(g, 'toast', { text: 'BURNT! THROW IT OUT' }); return r; }
   g.wok.tossT = g.time;
@@ -356,6 +372,7 @@ export function wokToss(g) {
     emit(g, 'sfx', { name: 'trash' });
     emit(g, 'toast', { text: `TOO FAST! SPILLED -${WASTE_COST}` });
   } else emit(g, 'sfx', { name: 'toss' });
+  goldChime(g, wasGold, wokPerfect(g.wok, g.cook.wok), 'wok');
   return r;
 }
 export function wokTake(g) {
@@ -366,9 +383,7 @@ export function wokTake(g) {
   const t = trayItem(w.item, st, wokPerfect(w, g.cook.wok));
   if (!trayAdd(g, t)) return false;
   g.wok = null;
-  emit(g, 'sfx', { name: t.cook === 'done' ? 'grab' : 'nope' });
-  if (t.cook === 'raw') emit(g, 'toast', { text: 'NOT COOKED YET!' });
-  if (t.perfect) emit(g, 'toast', { text: 'PERFECT TOSS!', good: true });
+  tookFeedback(g, t, 'NOT COOKED YET!');
   return true;
 }
 
@@ -415,9 +430,7 @@ export function steamTake(g, slot) {
   const t = trayItem(b.item, st, isPerfect(b.p, g.cook.steam));
   if (!trayAdd(g, t)) return false;
   g.steamer[slot] = null;
-  emit(g, 'sfx', { name: t.cook === 'done' ? 'grab' : 'nope' });
-  if (t.cook === 'raw') emit(g, 'toast', { text: 'NOT STEAMED YET!' });
-  if (t.perfect) emit(g, 'toast', { text: 'FLUFFY!', good: true });
+  tookFeedback(g, t, 'NOT STEAMED YET!');
   return true;
 }
 
@@ -452,9 +465,7 @@ export function potTake(g) {
   const t = trayItem(pt.item, st, isPerfect(pt.p, g.cook.pot));
   if (!trayAdd(g, t)) return false;
   g.pot = null;
-  emit(g, 'sfx', { name: t.cook === 'done' ? 'grab' : 'nope' });
-  if (t.cook === 'raw') emit(g, 'toast', { text: 'STILL HARD!' });
-  if (t.perfect) emit(g, 'toast', { text: 'SPRINGY!', good: true });
+  tookFeedback(g, t, 'STILL HARD!');
   return true;
 }
 

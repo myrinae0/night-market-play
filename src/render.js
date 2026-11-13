@@ -9,13 +9,15 @@
 //   tap             the older tap-to-apply controls with FLIP / TAKE / TOSS /
 //                   LIFT / SERVE buttons (the "Tap controls" setting)
 import { W, H, C, R, rbox, text, tw, mix } from './gfx.js';
-import { ITEMS, SAUCES, STATIONS, STATION_SAUCES, WOK_ITEMS, STEAM_ITEMS, TREAT } from './data.js';
-import { grillState, fryState, wokState, steamState, potState, potBoiling, scoreServe, canSauce, menuFor } from './logic.js';
+import { ITEMS, SAUCES, STATIONS, STATION_SAUCES, WOK_ITEMS, STEAM_ITEMS, TREAT, COOK_TEXT, STATION_KIND } from './data.js';
+import { grillState, grillPerfect, fryState, wokState, wokPerfect, steamState, potState, potBoiling, scoreServe, canSauce, menuFor } from './logic.js';
 import {
   drawItem, drawSauce, coinIcon, lockIcon, speakerIcon, gearIcon, heartIcon, drawCustomer, drawShiba,
 } from './sprites.js';
 import { drawParts, drawFloats, bounceAmt } from './fx.js';
-import { hit, src, dst, setTrayBox, button, label, arrowIcon, binIcon, wrap, withOrigin, withClip } from './ui.js';
+import {
+  hit, src, dst, setTrayBox, button, label, arrowIcon, binIcon, wrap, withOrigin, withClip, meter, meterLegend, sparkle, inGold, ZONE,
+} from './ui.js';
 import { LAY } from './layout.js';
 import { accepts, dragHint, findTarget } from './drag.js';
 import { SPIRITS, isSpirit } from './spirits.js';
@@ -325,7 +327,7 @@ function tick(x, y) {
 function patienceBar(x, y, w, k, t) {
   heartIcon(x, y, k > 0.3 ? C.red : (Math.floor(t * 6) % 2 ? C.red : C.redD));
   R(x + 10, y, w - 10, 6, C.ink);
-  const col = k > 0.6 ? C.green : k > 0.3 ? C.gold : C.red;
+  const col = k > 0.6 ? C.green : k > 0.3 ? C.orange : C.red; // (gold only ever means a perfect cook)
   const bw = Math.max(0, Math.round((w - 12) * k));
   R(x + 11, y + 1, bw, 4, col);
   R(x + 11, y + 1, bw, 1, mix(col, C.white, 0.4));
@@ -488,29 +490,35 @@ export function hud(app) {
 }
 
 // ---------- station tabs ----------
-// 'burn' if something there is burning or about to, 'ready' if done, else null.
+// 'burn' if something there is burnt or about to burn (the last 40% of the
+// green after the gold), 'perfect' if something is in the gold, 'ready' if
+// something is done, else null.
+const nearBurn = (p, spec) => p >= spec.perfectHi + (spec.burnt - spec.perfectHi) * 0.6;
 export function stationAlert(g, id) {
+  const pick = (ps, spec) => {
+    if (ps.some((p) => nearBurn(p, spec))) return 'burn';
+    if (ps.some((p) => inGold(p, spec))) return 'perfect';
+    if (ps.some((p) => p >= spec.done)) return 'ready';
+    return null;
+  };
   if (id === 'grill') {
-    if (g.grill.some((it) => it && Math.max(...it.sides) > g.cook.grill.perfectHi)) return 'burn';
-    if (g.grill.some((it) => it && grillState(it, g.cook.grill) === 'done')) return 'ready';
+    const its = g.grill.filter(Boolean), spec = g.cook.grill;
+    if (its.some((it) => it.sides.some((p) => nearBurn(p, spec)))) return 'burn';
+    if (its.some((it) => grillPerfect(it, spec))) return 'perfect';
+    if (its.some((it) => grillState(it, spec) === 'done')) return 'ready';
+    return null;
   }
-  if (id === 'fryer') {
-    const its = g.fryer.baskets.filter(Boolean);
-    if (its.some((it) => it.p > g.cook.fry.perfectHi)) return 'burn';
-    if (its.some((it) => fryState(it, g.cook.fry) === 'done')) return 'ready';
-  }
+  if (id === 'fryer') return pick(g.fryer.baskets.filter(Boolean).map((it) => it.p), g.cook.fry);
   if (id === 'wok' && g.wok) {
     if (g.wok.scorch > 0 || g.wok.idle > g.cook.wok.idleSafe * 0.6) return 'burn';
+    if (wokPerfect(g.wok, g.cook.wok)) return 'perfect';
     if (wokState(g.wok, g.cook.wok) === 'done') return 'ready';
+    return null;
   }
-  if (id === 'steamer') {
-    const its = g.steamer.filter((b) => b && b.lid);
-    if (its.some((b) => b.p > g.cook.steam.perfectHi)) return 'burn';
-    if (its.some((b) => steamState(b, g.cook.steam) === 'done')) return 'ready';
-  }
+  if (id === 'steamer') return pick(g.steamer.filter((b) => b && b.lid).map((b) => b.p), g.cook.steam);
   if (id === 'pot' && g.pot) {
-    if (g.pot.item && g.pot.p > g.cook.pot.perfectHi) return 'burn';
-    if (potState(g.pot, g.cook.pot) === 'done' || (potBoiling(g.pot) && !g.pot.item)) return 'ready';
+    if (g.pot.item) return pick([g.pot.p], g.cook.pot);
+    if (potBoiling(g.pot)) return 'ready';
   }
   return null;
 }
@@ -539,9 +547,10 @@ function tabs(app) {
         text(lab, x + 14, y + 5, { color: col, outline: cur ? null : C.ink });
       } else lockIcon(x + Math.floor(w / 2) - 4, y + 2, cur ? C.greyD : C.greyD);
     } else text(lab, x + w / 2, y + 5, { color: col, align: 'center', outline: cur ? null : C.ink });
-    // A dot on another station's tab when food there is ready (green) or burning (red).
+    // A dot on another station's tab when food there is good (green), in the
+    // gold (gold) or about to burn (blinking red): the meters' colours.
     const a = !cur && s.status === 'open' && g.phase === 'play' ? stationAlert(g, s.id) : null;
-    if (a && (a === 'ready' || Math.floor(app.time * 4) % 2)) { R(x + w - 6, y + 1, 5, 4, C.ink); R(x + w - 5, y + 2, 3, 2, a === 'ready' ? C.green : C.red); }
+    if (a && (a !== 'burn' || Math.floor(app.time * 4) % 2)) { R(x + w - 6, y + 1, 5, 4, C.ink); R(x + w - 5, y + 2, 3, 2, a === 'ready' ? ZONE.good : a === 'perfect' ? ZONE.perfect : ZONE.burnt); }
     hit(x, y, w, 14, () => app.goStation(i), 'tab', `tab:${s.id}`);
   });
 }
@@ -604,20 +613,7 @@ function utensil(kind, x, y, len) {
   else { R(x - 1, by - 2, 1, 7, C.steel); R(x + 1, by - 2, 1, 7, C.steel); } // tongs
 }
 
-// A cooking meter: grey = raw, green = done, gold = perfect, red = burnt.
-function meter(x, y, w, h, p, spec, active) {
-  const span = spec.max;
-  const px = (v) => x + Math.round((Math.min(v, span) / span) * w);
-  R(x - 1, y - 1, w + 2, h + 2, C.ink);
-  R(x, y, w, h, C.greyD);
-  R(px(spec.done), y, px(spec.burnt) - px(spec.done), h, C.greenD);
-  R(px(spec.perfectLo), y, px(spec.perfectHi) - px(spec.perfectLo), h, C.gold);
-  if (spec.burnt < span) R(px(spec.burnt), y, x + w - px(spec.burnt), h, C.redD);
-  if (!active) for (let i = 0; i < w; i += 2) R(x + i, y, 1, h, C.ink);
-  const m = Math.min(x + w - 1, px(p));
-  R(m - 1, y - 2, 3, h + 4, C.ink);
-  R(m, y - 1, 1, h + 2, C.white);
-}
+// Cooking meters (ui.js meter): grey = raw, green = good, gold = perfect, red = burnt.
 
 // Is this thing in the player's hand right now (so its home spot looks empty)?
 function holding(app, kind, key = null) {
@@ -748,8 +744,9 @@ function grillPanel(app, ox, live) {
     const up = it.sides[1 - it.down], down = it.sides[it.down];
     if (!holding(app, 'grill', i)) drawItem(it.item, mid - 16, gy + 5 + hop - bounceAmt(app.fx, `grill:${i}`), { up, down, scale: 2 });
     const mx = mid - Math.floor(mw / 2);
-    meter(mx, gy + 44, mw, 3, it.sides[0], g.cook.grill, it.down === 0);
-    meter(mx, gy + 51, mw, 3, it.sides[1], g.cook.grill, it.down === 1);
+    meter(mx, gy + 44, mw, 3, it.sides[0], g.cook.grill, it.down === 0, t);
+    meter(mx, gy + 51, mw, 3, it.sides[1], g.cook.grill, it.down === 1, t);
+    if (grillPerfect(it, g.cook.grill) && !holding(app, 'grill', i)) sparkle(mid + 13, gy + 2, t);
     const ay = gy + 44 + it.down * 7; // the flame marks the side on the heat
     R(mx - 6, ay - 1, 3, 5, C.orange); R(mx - 5, ay, 1, 3, C.yellow);
     if (drag) {
@@ -807,7 +804,8 @@ function fryerPanel(app, ox, live) {
     for (let y = fy + 12; y < fy + 46; y += 6) R(x0 + 12, y, 57, 1, mix(C.grey, C.oilD, 0.5));
     if (!it) { text('EMPTY', x0 + 40, fy + 26, { color: C.cream, outline: C.oilD, align: 'center' }); return; }
     if (!holding(app, 'basket', i)) drawItem('chicken', x0 + 24, fy + 12 - bounceAmt(app.fx, `fry:${i}`), { p: it.p, scale: 2 });
-    meter(x0 + 8, fy + 52, 64, 4, it.p, g.cook.fry, true);
+    meter(x0 + 8, fy + 52, 64, 4, it.p, g.cook.fry, true, t);
+    if (inGold(it.p, g.cook.fry) && !holding(app, 'basket', i)) sparkle(x0 + 56, fy + 10, t);
     const st = fryState(it, g.cook.fry);
     if (drag) {
       gestureLabels(x0 + 40, fy + 64, null, st === 'burnt' ? 'BIN' : 'TRAY');
@@ -817,7 +815,6 @@ function fryerPanel(app, ox, live) {
       if (live) hit(x0 + 12, fy + 4, 56, 44, () => G.fryLift(g, i), `lift:${i}`);
     }
   });
-  label('GOLD = PERFECT', ox + 90, b0 + ex + 86, C.cream);
 }
 
 // The wok: one dish at a time. Each toss cooks it; toss again before it lands
@@ -865,15 +862,18 @@ function wokPanel(app, ox, live) {
   if (st === 'burnt') { msg = 'BURNT!'; col = C.red; }
   else if (w.scorch > 0) { msg = 'SCORCHING! TOSS!'; col = Math.floor(t * 6) % 2 ? C.red : C.yellow; }
   else if (inAir) { msg = 'IN THE AIR...'; col = C.yellow; }
-  else if (st === 'done') { msg = 'DONE! TO THE TRAY'; col = C.greenL; }
+  else if (st === 'done' && wokPerfect(w, spec)) { msg = 'PERFECT! TO THE TRAY'; col = ZONE.perfect; }
+  else if (st === 'done' && w.p < spec.perfectLo && !w.spills) { msg = 'GOOD. TOSS FOR GOLD'; col = ZONE.good; }
+  else if (st === 'done') { msg = 'GOOD! TO THE TRAY'; col = ZONE.good; }
   else if (w.tosses + w.spills === 0) { msg = 'TAP TO TOSS'; col = C.yellow; }
   rbox(cx - tw(msg) / 2 - 4, wy + 4, tw(msg) + 9, 10, C.ink);
   text(msg, cx, wy + 6, { color: col, align: 'center' });
-  meter(cx - 56, wy + 71, 112, 4, w.p, spec, true);
+  meter(cx - 56, wy + 71, 112, 4, w.p, spec, true, t);
+  if (wokPerfect(w, spec) && !holding(app, 'wok')) sparkle(cx + 18, top - 26 - lift, t);
   // the idle clock: it fills as the dish sits still, then turns red while it scorches
   const idleK = Math.min(1, w.idle / spec.idleSafe);
   if (w.scorch > 0) R(cx - 56, wy + 77, Math.round(112 * w.scorch), 2, C.red);
-  else if (idleK > 0.4 && !inAir) R(cx - 56, wy + 77, Math.round(112 * idleK), 2, mix(C.gold, C.red, (idleK - 0.4) / 0.6));
+  else if (idleK > 0.4 && !inAir) R(cx - 56, wy + 77, Math.round(112 * idleK), 2, mix(C.orange, C.red, (idleK - 0.4) / 0.6));
   if (drag) {
     gestureLabels(cx - 34, wy + 83, 'TOSS', null);
     gestureLabels(cx + 34, wy + 83, null, st === 'burnt' ? 'BIN' : 'TRAY');
@@ -953,7 +953,8 @@ function steamerPanel(app, ox, live) {
     }
     if (!b) { text('EMPTY', mid, fy + 20, { color: C.greyDD, outline: null, align: 'center' }); return; }
     const st = steamState(b, g.cook.steam);
-    meter(x0 + 8, fy + 70, 64, 4, b.p, g.cook.steam, b.lid);
+    meter(x0 + 8, fy + 70, 64, 4, b.p, g.cook.steam, b.lid, t);
+    if (inGold(b.p, g.cook.steam) && !holding(app, 'steam', i)) sparkle(mid + 24, by - 18, t);
     if (drag) {
       if (b.lid) gestureLabels(mid, fy + 78, 'LIFT', null);
       else {
@@ -1038,7 +1039,9 @@ function potPanel(app, ox, live) {
   else {
     const st = potState(pt, spec);
     if (st === 'burnt') { msg = 'TOO SOFT! BIN IT'; col = C.red; }
-    else if (st === 'done') { msg = 'DONE! TO THE TRAY'; col = C.greenL; }
+    else if (st === 'done' && inGold(pt.p, spec)) { msg = 'PERFECT! TO THE TRAY'; col = ZONE.perfect; }
+    else if (st === 'done' && pt.p < spec.perfectLo) { msg = 'GOOD. GOLD SOON'; col = ZONE.good; }
+    else if (st === 'done') { msg = 'GOOD! TO THE TRAY'; col = ZONE.good; }
     else msg = ITEMS[pt.item].short;
   }
   rbox(cx - tw(msg) / 2 - 4, wy + 6, tw(msg) + 9, 10, C.ink);
@@ -1046,7 +1049,10 @@ function potPanel(app, ox, live) {
   if (pt && !boiling) { // the boil bar
     R(cx - 57, wy + 71, 114, 6, C.ink); R(cx - 56, wy + 72, 112, 4, C.greyDD);
     R(cx - 56, wy + 72, Math.round(112 * pt.boil), 4, C.teal);
-  } else if (pt && pt.item) meter(cx - 56, wy + 72, 112, 4, pt.p, spec, true);
+  } else if (pt && pt.item) {
+    meter(cx - 56, wy + 72, 112, 4, pt.p, spec, true, t);
+    if (inGold(pt.p, spec) && !holding(app, 'pot')) sparkle(cx + 34, top - 4, t);
+  }
   if (!pt || !pt.item) return;
   const st = potState(pt, spec);
   if (drag) {
@@ -1114,6 +1120,7 @@ function tray(app, live) {
       drawItem(it.item, x, y + 2 - bounceAmt(app.fx, `tray:${i}`), { cook: it.cook, sauce: it.sauce, scale: 2 });
       if (it.cook === 'raw') text('RAW', x + 16, y + 28, { color: C.pink, align: 'center' });
       if (it.cook === 'burnt') text('BURNT', x + 16, y + 28, { color: C.red, align: 'center' });
+      if (it.perfect) sparkle(x + 1, y + 1, t); // cooked in the gold
     }
     if (!live) continue;
     const pw = trayPitch(g);
@@ -1152,8 +1159,23 @@ function tray(app, live) {
   }
   const hx = drag ? 77 : 90;
   text(hintFor(app), hx, TRAY_Y + 56, { align: 'center', color: g.held ? C.yellow : C.cream });
-  const sub = subHint(app);
-  if (sub) text(sub, hx, TRAY_Y + 64, { align: 'center', color: C.grey });
+  const leg = legendWords(app);
+  if (leg) meterLegend(hx, TRAY_Y + 64, leg);
+  else {
+    const sub = subHint(app);
+    if (sub) text(sub, hx, TRAY_Y + 64, { align: 'center', color: C.grey });
+  }
+}
+// While food cooks on this station, the line under the hint is the meters'
+// legend (green good, gold perfect, red burnt), the same on every station.
+const METER_SHOWN = {
+  grill: (g) => g.grill.some(Boolean), fryer: (g) => g.fryer.baskets.some(Boolean), wok: (g) => !!g.wok,
+  steamer: (g) => g.steamer.some(Boolean), pot: (g) => !!(g.pot && g.pot.item),
+};
+export function legendWords(app) {
+  const g = app.g, s = G.currentStation(g);
+  if (!g || g.held || s.status !== 'open' || !METER_SHOWN[s.id] || !METER_SHOWN[s.id](g)) return null;
+  return { ...COOK_TEXT, burnt: COOK_TEXT.burnt[STATION_KIND[s.id]] };
 }
 function hintFor(app) {
   const g = app.g, s = G.currentStation(g), drag = !tapMode(app);
@@ -1240,8 +1262,10 @@ function toastBox(app) {
   if (!ts) return;
   const w = tw(ts.str, 'big') + 12;
   const y = boxGeom().gy + 6 - Math.round(Math.min(1, ts.t * 6) * 6);
-  rbox(90 - w / 2, y, w, 15, ts.good ? C.greenD : C.redD);
-  text(ts.str, 90, y + 4, { font: 'big', align: 'center', color: C.white });
+  // A perfect cook gets a gold toast (the meters' gold); good news green, bad red.
+  rbox(90 - w / 2, y, w, 15, ts.perfect ? ZONE.perfect : ts.good ? C.greenD : C.redD);
+  if (ts.perfect) R(90 - w / 2 + 2, y + 1, w - 4, 1, ZONE.shine);
+  text(ts.str, 90, y + 4, { font: 'big', align: 'center', color: ts.perfect ? C.ink : C.white, outline: ts.perfect ? null : C.ink });
 }
 
 // ---------- the game frame (screens.js adds the overlays) ----------

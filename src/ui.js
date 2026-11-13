@@ -88,3 +88,47 @@ export function toggle(x, y, on) {
   rbox(kx, y + 1, 9, 9, C.white);
   text(on ? 'ON' : 'OFF', on ? x + 7 : x + 17, y + 3, { align: 'center', color: C.white, outline: null });
 }
+
+// ---------- the cooking meters' colour code ----------
+// One code on every station, legend and intro card (data.js COOK_TEXT has the
+// words): grey = raw, green = good, gold = perfect (inside the green),
+// red = burnt.
+export const ZONE = { raw: C.greyD, good: C.green, perfect: '#ffcd2e', shine: '#fff3a8', burnt: C.red };
+export const inGold = (p, spec) => p >= spec.perfectLo && p <= spec.perfectHi;
+// A cooking meter (w x h inside a 1 px outline) with the needle at p. In the
+// gold, the outline glows gold. `active` false (the grill side facing up)
+// stripes it dark.
+export function meter(x, y, w, h, p, spec, active = true, t = 0) {
+  const span = spec.max;
+  const px = (v) => x + Math.round((Math.min(v, span) / span) * w);
+  const gold = inGold(p, spec);
+  R(x - 1, y - 1, w + 2, h + 2, gold ? (Math.floor(t * 4) % 2 ? ZONE.shine : ZONE.perfect) : C.ink);
+  R(x, y, w, h, ZONE.raw);
+  R(px(spec.done), y, px(spec.burnt) - px(spec.done), h, ZONE.good);
+  R(px(spec.perfectLo), y, px(spec.perfectHi) - px(spec.perfectLo), h, ZONE.perfect);
+  if (h >= 3) R(px(spec.perfectLo), y, px(spec.perfectHi) - px(spec.perfectLo), 1, ZONE.shine);
+  if (spec.burnt < span) R(px(spec.burnt), y, x + w - px(spec.burnt), h, ZONE.burnt);
+  if (!active) for (let i = 0; i < w; i += 2) R(x + i, y, 1, h, C.ink);
+  const m = Math.min(x + w - 1, px(p));
+  R(m - 1, y - 2, 3, h + 4, C.ink);
+  R(m, y - 1, 1, h + 2, C.white);
+}
+// The legend, one row 5 px tall centred on cx: a swatch and a word for green,
+// gold and red. `light`: on a white card (ink words, no outline).
+export function meterLegend(cx, y, words, light = false) {
+  const items = [[ZONE.good, words.good], [ZONE.perfect, words.perfect], [ZONE.burnt, words.burnt]];
+  const ws = items.map(([, s]) => 7 + tw(s));
+  let x = cx - Math.floor((ws.reduce((a, b) => a + b, 0) + 8 * (items.length - 1)) / 2);
+  items.forEach(([col, s], i) => {
+    R(x, y - 1, 6, 7, C.ink); R(x + 1, y, 4, 5, col);
+    text(s, x + 8, y, light ? { color: C.ink, outline: null } : { color: col === ZONE.burnt ? C.redL : col });
+    x += ws[i] + 8;
+  });
+}
+// A gold twinkle (5 x 5) next to food in the gold.
+export function sparkle(x, y, t) {
+  const on = Math.floor(t * 4) % 2;
+  const c = on ? ZONE.shine : ZONE.perfect;
+  R(x + 2, y, 1, 5, c); R(x, y + 2, 5, 1, c);
+  if (on) { R(x + 1, y + 1, 3, 3, c); R(x + 2, y + 2, 1, 1, C.white); }
+}

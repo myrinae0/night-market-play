@@ -3,7 +3,7 @@
 // (debug). drawFrame() draws whichever screen is up and returns the registry
 // of hits, drag sources and drop targets for main.js.
 import { W, H, C, R, rbox, text, tw, mix, getCtx } from './gfx.js';
-import { LEVELS, STATIONS, UPGRADES, SHOP_FROM_LEVEL, RESET_TEXT, ITEMS } from './data.js';
+import { LEVELS, STATIONS, UPGRADES, SHOP_FROM_LEVEL, RESET_TEXT, ITEMS, COOK, COOK_TEXT, STATION_KIND } from './data.js';
 import { isUnlocked, levelDef, canBuy } from './logic.js';
 import { drawItem, drawCustomer, drawShiba, drawPortrait, starIcon, lockIcon, coinIcon, heartIcon } from './sprites.js';
 import { SPIRITS, SPIRIT_IDS } from './spirits.js';
@@ -12,7 +12,7 @@ import {
   drawGame, drawMarket, drawRain, awningAndCounter, hud, tapMode, SCENE_H, COUNTER_Y, lidArt, kettleArt, inScene, stallFront,
 } from './render.js';
 import { drawParts } from './fx.js';
-import { resetRegistry, clearHits, hit, dim, panel, button, toggle, wrap, withOrigin } from './ui.js';
+import { resetRegistry, clearHits, hit, dim, panel, button, toggle, wrap, withOrigin, meter, meterLegend } from './ui.js';
 import { LAY, wideRight, centerBlock, computeLayout } from './layout.js';
 
 // Wooden floor planks over a screen rect (default: everything below y0).
@@ -562,7 +562,11 @@ function introCard(app) {
   centered(() => introBody(app, ph, oy), 70 + oy, 72 + oy + ph, 14);
 }
 const introRows = (app) => app.g.def.intro[tapMode(app) ? 'tap' : 'drag'].map((l) => wrap(l.toUpperCase(), 136));
-export const introHeight = (app) => 137 + introRows(app).reduce((a, r) => a + r.length * 8 + 4, 0);
+// A night that brings a new cooking station shows the meters' colour code:
+// a sample meter (its needle sweeps from raw to burnt) and the legend.
+const LEGEND_H = 30;
+export const introLegend = (g) => (g.def.kind === 'station' && STATION_KIND[g.def.intro.station]) || null;
+export const introHeight = (app) => 137 + introRows(app).reduce((a, r) => a + r.length * 8 + 4, 0) + (introLegend(app.g) ? LEGEND_H : 0);
 function introBody(app, ph, oy) {
   const g = app.g, t = app.time, it = g.def.intro;
   const rowsAll = introRows(app);
@@ -578,6 +582,15 @@ function introBody(app, ph, oy) {
     R(16, y + 1, 3, 3, C.red);
     for (const r of rows) { text(r, 23, y, { color: C.ink, outline: null }); y += 8; }
     y += 4;
+  }
+  const kind = introLegend(g);
+  if (kind) {
+    const spec = COOK[kind];
+    text(COOK_TEXT.aim, 90, y, { align: 'center', color: C.redD, outline: null });
+    const p = ((t * 0.18) % 1) * spec.max;
+    meter(30, y + 10, 120, 4, p, spec, true, t);
+    meterLegend(90, y + 20, { ...COOK_TEXT, burnt: COOK_TEXT.burnt[kind] }, true);
+    y += LEGEND_H;
   }
   button(40, y + 4, 100, 16, 'TAP TO START', Math.floor(t * 2) % 2 ? C.greenD : C.green, null);
 }

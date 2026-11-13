@@ -27,7 +27,7 @@ export function registerFoodArt() {
 // Food art is the CC0 "16x16 Food" pack (src/assets.js); drinks the pack has no
 // sprite for (barley tea, beer) are drawn here in the same 16 x 16 style:
 // dark brown outline, two-tone shading, top-left light.
-export const STATE_P = { raw: 0.25, done: 0.95, burnt: 1.45 };
+export const STATE_P = { raw: 0.25, done: 0.95, burnt: 3 }; // burnt: past every station's burn point
 const OL = '#3a2229'; // the food pack's outline brown
 
 function teaArt(x, y) {

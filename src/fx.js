@@ -33,7 +33,7 @@ export function bounceAmt(fx, key) {
   if (t == null) return 0;
   return Math.round(Math.sin((t / 0.25) * Math.PI) * 3);
 }
-export function toast(fx, str, good = false) { fx.toast = { str, good, t: 0, life: 1.1 }; }
+export function toast(fx, str, good = false, perfect = false) { fx.toast = { str, good, perfect, t: 0, life: 1.1 }; }
 
 export function updateFx(fx, dt) {
   for (const p of fx.parts) {

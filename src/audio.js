@@ -119,7 +119,11 @@ const SOUNDS = {
   crackle: () => noise(0.03, { type: 'highpass', f: 4000 + Math.random() * 3000, vol: 0.04 }),
   bubble: () => tone(300 + Math.random() * 300, 0.05, { type: 'sine', vol: 0.04, to: 600 + Math.random() * 300 }),
   flip: () => { noise(0.08, { f: 1200, to: 3000, vol: 0.12 }); tone(300, 0.06, { type: 'triangle', vol: 0.06, to: 500 }); },
+  // Cooking cues: 'ready' when food reaches the green, 'gold' (a brighter bell)
+  // when it reaches the gold, 'perfect' (a sparkle) when it comes off in the gold.
   ready: () => { tone(1320, 0.08, { type: 'triangle', vol: 0.08 }); tone(1760, 0.12, { type: 'triangle', vol: 0.08, at: 0.08 }); },
+  gold: () => { tone(2093, 0.18, { type: 'sine', vol: 0.07 }); tone(2637, 0.3, { type: 'sine', vol: 0.06, at: 0.07 }); },
+  perfect: () => { [1568, 2093, 2637, 3136].forEach((f, i) => tone(f, i === 3 ? 0.22 : 0.07, { type: 'sine', vol: 0.07, at: i * 0.05 })); noise(0.15, { type: 'highpass', f: 7000, vol: 0.04, at: 0.12 }); },
   burn: () => { tone(140, 0.3, { type: 'sawtooth', vol: 0.08, to: 90 }); noise(0.4, { type: 'lowpass', f: 800, vol: 0.08 }); },
   batter: () => { noise(0.18, { type: 'lowpass', f: 600, to: 200, vol: 0.2 }); tone(200, 0.1, { type: 'sine', vol: 0.08, to: 120 }); },
   fry: () => { noise(0.7, { type: 'highpass', f: 2500, vol: 0.14, attack: 0.01 }); noise(0.3, { type: 'lowpass', f: 400, vol: 0.1 }); },

@@ -72,17 +72,36 @@ export const sauceSuits = (id, item) => {
 // Wok: each toss adds `perToss`; a toss while the food is still in the air
 // (`air` seconds after the last one) spills a little; after `idleSafe` seconds
 // without a toss the food starts to scorch and is burnt `scorchTime` later.
+//
+// Tuning history (Chris, after playing on his phone):
+//  - Nov 13, 1 AM: good and perfect windows about 1.5x as wide.
+//  - Nov 13, 2 AM: cooking about 1.5x slower (`time` x1.5, so "done" comes
+//    1.5x later) so juggling two or three stations is comfortable, and the
+//    good and perfect windows another ~1.4x wider on the meter (in seconds
+//    about 2.1x, since the food also cooks slower). "Done" stays where it was
+//    on the meter. The wok cooks by tosses: its perfect window takes one more
+//    toss, and it waits 1.5x longer before it scorches.
 export const COOK = {
-  // The good (done..burnt) and perfect windows are about 1.5 times as wide as
-  // in the first build (Chris: "flipping is too harsh"), centred where they were.
-  grill: { time: 4.5, done: 0.62, perfectLo: 0.8, perfectHi: 1.15, burnt: 1.45, max: 1.7, upRate: 0.08 },
-  fry: { time: 6.5, done: 0.68, perfectLo: 0.86, perfectHi: 1.1, burnt: 1.36, max: 1.6 },
-  // Wok: tosses cook it; it only burns by sitting still (idleSafe, then scorchTime).
-  wok: { perToss: 0.15, done: 0.7, perfectLo: 0.82, perfectHi: 1.16, burnt: 99, max: 1.25, air: 0.32, idleSafe: 2.8, scorchTime: 3.2, spillLoss: 0.1 },
+  grill: { time: 6.75, done: 0.62, perfectLo: 0.8, perfectHi: 1.29, burnt: 1.78, max: 2.0, upRate: 0.08 },
+  fry: { time: 9.75, done: 0.68, perfectLo: 0.87, perfectHi: 1.21, burnt: 1.63, max: 1.85 },
+  // Wok: 5 clean tosses: done; 6 to 8: perfect (was 6 or 7). It only burns by
+  // sitting still (idleSafe seconds, then scorchTime more).
+  wok: { perToss: 0.15, done: 0.7, perfectLo: 0.82, perfectHi: 1.24, burnt: 99, max: 1.3, air: 0.32, idleSafe: 4.2, scorchTime: 4.8, spillLoss: 0.1 },
   // Steamer: cooks only while the lid is on; leave it too long and it goes soggy.
-  steam: { time: 7, done: 0.68, perfectLo: 0.84, perfectHi: 1.2, burnt: 1.65, max: 1.9 },
+  steam: { time: 10.5, done: 0.68, perfectLo: 0.84, perfectHi: 1.34, burnt: 2.04, max: 2.3 },
   // Noodle pot: the water takes `boil` seconds to boil; then the noodles cook.
-  pot: { boil: 3, time: 5.5, done: 0.68, perfectLo: 0.855, perfectHi: 1.125, burnt: 1.5, max: 1.75 },
+  pot: { boil: 4.5, time: 8.25, done: 0.68, perfectLo: 0.86, perfectHi: 1.24, burnt: 1.83, max: 2.05 },
+};
+
+// The meters' colour code, the same on every station, legend and intro card:
+// grey raw, GREEN = GOOD, GOLD = PERFECT (inside the green), RED =
+// BURNT (soggy on the steamer, mushy in the pot). "Gold" and "golden" in any
+// text always mean the perfect zone.
+export const COOK_TEXT = {
+  good: 'GOOD', perfect: 'PERFECT', aim: 'AIM FOR THE GOLD',
+  burnt: { grill: 'BURNT', fry: 'BURNT', wok: 'BURNT', steam: 'SOGGY', pot: 'MUSHY' },
+  // Toasts when food comes off: in the gold, or in the green.
+  tookPerfect: 'PERFECT!', tookGood: 'GOOD',
 };
 
 export const GRILL_SLOTS = 3;
@@ -110,8 +129,8 @@ export const LEVELS = [
     intro: {
       station: 'grill',
       heading: 'NEW: THE GRILL',
-      drag: ['Swipe empty space or tap a tab to switch stations.', 'Drag meat onto the grill. Tap it to flip.', 'Drag it to the tray when both bars are green.'],
-      tap: ['Swipe left or right to switch stations.', 'Grill both sides: FLIP, then TAKE when the bars are green.', 'Add a glaze on the tray if they ask.'],
+      drag: ['Swipe empty space or tap a tab to switch stations.', 'Drag meat onto the grill. Tap it to flip.', 'Take it when both bars are in the gold: perfect. Green is good too.'],
+      tap: ['Swipe left or right to switch stations.', 'FLIP to grill both sides. Add a glaze on the tray if they ask.', 'TAKE it with both bars in the gold: perfect. Green is good too.'],
     },
   },
   {
@@ -119,8 +138,8 @@ export const LEVELS = [
     intro: {
       station: 'fryer',
       heading: 'NEW: THE FRYER',
-      drag: ['Drag chicken onto the batter bowl.', 'Then drag it into a basket.', 'Drag it to the tray in the gold. Beer is in the cooler.'],
-      tap: ['Tap chicken, then the bowl to batter it.', 'Lift it out in the gold zone.', 'Toss in sauce on the tray. Beer is in the cooler.'],
+      drag: ['Drag chicken onto the batter bowl, then into a basket.', 'Drag it to the tray in the gold: perfect. Green is good too.', 'Beer is in the cooler.'],
+      tap: ['Tap chicken, then the bowl to batter it.', 'LIFT it in the gold: perfect. Green is good too.', 'Toss in sauce on the tray. Beer is in the cooler.'],
     },
   },
   {
@@ -128,8 +147,8 @@ export const LEVELS = [
     intro: {
       station: 'wok',
       heading: 'NEW: THE WOK',
-      drag: ['Drag rice cakes, noodles or rice into the wok.', 'Tap the wok to toss. Let it land first!', 'Stop tossing and it scorches. Drag egg or scallion on top.'],
-      tap: ['Tap rice cakes, noodles or rice to start a dish.', 'Tap TOSS (or the wok). Let it land between tosses!', 'Stop tossing and it scorches. TAKE it when it is done.'],
+      drag: ['Drag rice cakes, noodles or rice into the wok.', 'Tap the wok to toss. Let it land first! Take it in the gold.', 'Stop tossing and it scorches. Drag egg or scallion on top.'],
+      tap: ['Tap rice cakes, noodles or rice to start a dish.', 'Tap TOSS (or the wok). Let it land between tosses!', 'Stop tossing and it scorches. TAKE it in the gold.'],
     },
   },
   {
@@ -156,8 +175,8 @@ export const LEVELS = [
     intro: {
       station: 'steamer',
       heading: 'NEW: THE STEAMER',
-      drag: ['Drag mandu or buns into a basket.', 'Drag a lid on. It only steams with the lid on.', 'Tap the lid to lift it, then drag it to the tray.'],
-      tap: ['Tap mandu or buns. They go in with the lid on.', 'Watch the bar. TAKE it in the gold.', 'Dips go on mandu only. A bun stays plain.'],
+      drag: ['Drag mandu or buns into a basket.', 'Drag a lid on. It only steams with the lid on.', 'Tap the lid to lift it. Drag it to the tray in the gold.'],
+      tap: ['Tap mandu or buns. They go in with the lid on.', 'Watch the bar. TAKE it in the gold: perfect.', 'Dips go on mandu only. A bun stays plain.'],
     },
   },
   {
@@ -250,7 +269,9 @@ export const MOODS = {
 };
 // Chimaek's treat (`treat` on a level): she gets hungry now and then; plain
 // grilled beef makes her happy, and tips are worth this much more for a while.
-export const TREAT = { first: 16, every: 40, wait: 24, retry: 26, tipMul: 1.5, lasts: 22 };
+// (Cooking got 1.5x slower on Nov 13: she now waits 30 s, was 24, and the
+// happy spell lasts 30 s, was 22, so it still covers a few guests.)
+export const TREAT = { first: 16, every: 40, wait: 30, retry: 26, tipMul: 1.5, lasts: 30 };
 
 // Star thresholds, as a share of the level's best possible coins.
 export const STAR_SHARES = [0.35, 0.6, 0.8];

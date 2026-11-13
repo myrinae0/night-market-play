@@ -242,7 +242,7 @@ function handleEvents() {
   if (!g) return;
   for (const e of G.takeEvents(g)) {
     if (e.type === 'sfx') audio.play(e.name);
-    else if (e.type === 'toast') toast(app.fx, e.text, e.good);
+    else if (e.type === 'toast') toast(app.fx, e.text, e.good, e.perfect);
     else if (e.type === 'tray') bounce(app.fx, `tray:${e.index}`);
     else if (e.type === 'sauced') { bounce(app.fx, `tray:${e.index}`); spawn(app.fx, 'tray', 18 + e.index * 30, 330, 'drip', 6); }
     else if (e.type === 'place') {
@@ -655,6 +655,7 @@ const SHOTS = {
   storylog() { save.story.seen = { l1: true, l2: true, l3: true }; save.story.memories = { lantern: 2, fox: 1 }; save.story.flags = { deung_told: true }; app.openLog(); },
   intro2() { app.newLevel(2); run(0.6); },
   intro4() { app.newLevel(4); run(0.6); },
+  intro3() { app.newLevel(3); run(0.6); },
   introtap() { save.tapControls = true; app.newLevel(3); run(0.6); },
   counter() { play(1); autoServe(); autoServe(); waitForGuest(); G.grabReady(app.g, G.waiting(app.g)[0].order.lines[0].item); run(0.1); },
   drag() { // dragging a galbi from the bin over a free grill spot
@@ -675,15 +676,15 @@ const SHOTS = {
   grill() {
     play(2); autoServe(); waitForGuest();
     const g = app.g;
-    G.grillAdd(g, 'galbi'); run(3.2); G.grillFlip(g, 0); G.grillAdd(g, 'sausage'); run(2.6);
-    G.grillAdd(g, 'galbi'); run(1.2); G.grabReady(g, 'soda'); run(0.5);
+    G.grillAdd(g, 'galbi'); run(4.8); G.grillFlip(g, 0); G.grillAdd(g, 'sausage'); run(3.9);
+    G.grillAdd(g, 'galbi'); run(1.8); G.grabReady(g, 'soda'); run(0.5);
   },
   tapmode() { save.tapControls = true; SHOTS.grill(); },
   swipe() { SHOTS.grill(); app.switchStation(-1); app.slide.k = 0.4; },
   fryerbatter() { play(3); const g = app.g; G.fryBatter(g); run(0.6); G.grabReady(g, 'beer'); run(0.2); }, // battered chicken waiting in the bowl
   fryer() {
     play(3); const g = app.g;
-    G.fryBatter(g); run(0.5); G.fryToBasket(g, 0); run(4.3); G.fryBatter(g); run(0.5); G.fryToBasket(g, 1); run(1.1); G.fryBatter(g); run(0.6);
+    G.fryBatter(g); run(0.5); G.fryToBasket(g, 0); run(6.5); G.fryBatter(g); run(0.5); G.fryToBasket(g, 1); run(1.6); G.fryBatter(g); run(0.6);
     G.grabReady(g, 'beer'); run(0.3);
   },
   sauce() {
@@ -697,7 +698,7 @@ const SHOTS = {
     g.tray.push({ item: 'tteokbokki', cook: 'done', perfect: true, sauce: 'scallion' });
     G.wokStart(g, 'japchae'); for (let i = 0; i < 3; i++) { run(0.4); G.wokToss(g); } run(0.14);
   },
-  wokscorch() { play(4); const g = app.g; G.wokStart(g, 'friedrice'); for (let i = 0; i < 6; i++) { run(0.4); G.wokToss(g); } run(3.2); },
+  wokscorch() { play(4); const g = app.g; G.wokStart(g, 'friedrice'); for (let i = 0; i < 6; i++) { run(0.4); G.wokToss(g); } run(COOK.wok.idleSafe + 0.6); },
   woktap() { save.tapControls = true; play(4); const g = app.g; G.wokStart(g, 'tteokbokki'); for (let i = 0; i < 5; i++) { run(0.4); G.wokToss(g); } run(0.5); },
   mix() { play(5); autoServe(); waitForGuest(); const g = app.g; G.grillAdd(g, 'galbi'); G.fryBatter(g); run(0.6); G.fryToBasket(g); G.wokStart(g, 'japchae'); run(0.5); G.wokToss(g); app.goStation(3); run(0.5); },
   upgraded() { play(5, { upgrades: { grill4: true, tray5: true } }); const g = app.g; ['galbi', 'sausage', 'galbi', 'sausage'].forEach((id) => G.grillAdd(g, id)); run(2); ['soda', 'tea', 'kimbap', 'toast', 'beer'].forEach((id) => G.grabReady(g, id)); app.goStation(1); run(0.5); },
@@ -729,13 +730,13 @@ const SHOTS = {
   introtap7() { save.tapControls = true; app.newLevel(7); run(0.6); },
   steamer() { // one basket steaming with the lid on, one open with buns, sauce on the tray
     play(7); const g = app.g;
-    G.steamAdd(g, 'mandu', 0); G.steamLidOn(g, 0); run(2.5);
-    G.steamAdd(g, 'bun', 1); G.steamLidOn(g, 1); run(4.8); G.steamLidOff(g, 1); run(0.3);
+    G.steamAdd(g, 'mandu', 0); G.steamLidOn(g, 0); run(3.8);
+    G.steamAdd(g, 'bun', 1); G.steamLidOn(g, 1); run(7.2); G.steamLidOff(g, 1); run(0.3);
     g.tray.push({ item: 'mandu', cook: 'done', perfect: true, sauce: 'chilioil' });
   },
   steamlid() { play(7); const g = app.g; G.steamAdd(g, 'mandu', 0); run(0.3); holdAt({ kind: 'lid' }, 50, 262); },
   steamtap() { save.tapControls = true; play(7); const g = app.g; G.steamAdd(g, 'mandu'); run(3); G.steamAdd(g, 'bun'); run(1); },
-  pot() { play(10); const g = app.g; G.potWater(g); run(3.2); G.potAdd(g, 'ramyeon'); run(3.4); g.tray.push({ item: 'ramyeon', cook: 'done', perfect: true, sauce: 'egg' }); },
+  pot() { play(10); const g = app.g; G.potWater(g); run(COOK.pot.boil + 0.2); G.potAdd(g, 'ramyeon'); run(5.1); g.tray.push({ item: 'ramyeon', cook: 'done', perfect: true, sauce: 'egg' }); },
   potboil() { play(10); const g = app.g; G.potWater(g); run(1.4); holdAt({ kind: 'bin', item: 'ramyeon' }, 92, 260); },
   pottap() { save.tapControls = true; play(10); const g = app.g; G.potAdd(g, 'ramyeon'); run(1.5); },
   tabs6() { play(11); const g = app.g; G.potWater(g); G.grillAdd(g, 'galbi'); run(4.6); app.goStation(4); run(0.5); },
@@ -747,7 +748,7 @@ const SHOTS = {
     play(8); run(9); const g = app.g; G.grabReady(g, 'tea'); run(0.2);
   },
   treat() { // Chimaek is hungry; plain beef on the grill and on the tray
-    play(9); const g = app.g; run(17); G.grillAdd(g, 'plain', 0); G.grillAdd(g, 'galbi', 1); run(3.4); G.grillFlip(g, 0); run(1);
+    play(9); const g = app.g; run(17); G.grillAdd(g, 'plain', 0); G.grillAdd(g, 'galbi', 1); run(5.1); G.grillFlip(g, 0); run(1.5);
     g.tray.push({ item: 'plain', cook: 'done', perfect: true, sauce: null }); app.goStation(1); run(0.5);
   },
   treatdrag() { SHOTS.treat(); holdAt({ kind: 'tray', index: 0 }, 20, 120); },
@@ -769,6 +770,28 @@ const SHOTS = {
   storylog2() { save.story.seen = { l7: true, l8: true, l9: true, l10: true }; save.story.memories = { wisp: 2, fox: 5 }; app.openLog(); app.setLogPage(1); },
   scene13() { app.playLevel(13); for (let i = 0; i < 4; i++) { app.dlgT = 99; app.dlgTap(); } run(1); },
   cast() { app.screen = 'cast'; run(0.5); },
+  // ---------- the meters' colour code: food in the green (good) and in the gold (perfect) ----------
+  cookgrill() { // spot 1: both sides green (good); spot 2: both gold (perfect); spot 3: past the gold, still green
+    play(2); const g = app.g;
+    [[0.7, 0.68], [1.02, 0.96], [1.5, 1.45]].forEach((sides, i) => { G.grillAdd(g, i === 1 ? 'sausage' : 'galbi', i); Object.assign(g.grill[i], { sides, down: 1 }); });
+    run(0.3); G.takeEvents(g);
+  },
+  cookfryer() { // basket 1 in the green, basket 2 in the gold
+    play(3); const g = app.g;
+    G.fryBatter(g); run(0.5); G.fryToBasket(g, 0); G.fryBatter(g); run(0.5); G.fryToBasket(g, 1);
+    g.fryer.baskets[0].p = 0.74; g.fryer.baskets[1].p = 1.02; run(0.3);
+  },
+  cooksteamer() { // basket 1 steaming in the green, basket 2 lid off in the gold
+    play(7); const g = app.g;
+    G.steamAdd(g, 'mandu', 0); G.steamLidOn(g, 0); G.steamAdd(g, 'bun', 1); G.steamLidOn(g, 1);
+    g.steamer[0].p = 0.74; g.steamer[1].p = 1.05; G.steamLidOff(g, 1); run(0.4);
+  },
+  wokgood() { play(4); const g = app.g; G.wokStart(g, 'japchae'); Object.assign(g.wok, { p: 0.75, tosses: 5 }); run(0.3); },
+  wokgold() { play(4); const g = app.g; G.wokStart(g, 'tteokbokki'); Object.assign(g.wok, { p: 1.05, tosses: 7 }); run(0.3); },
+  potgood() { play(10); const g = app.g; G.potWater(g); g.pot.boil = 1; G.potAdd(g, 'ramyeon'); g.pot.p = 0.74; run(0.3); },
+  potgold() { play(10); const g = app.g; G.potWater(g); g.pot.boil = 1; G.potAdd(g, 'ramyeon'); g.pot.p = 1.02; run(0.3); },
+  // A perfect cook coming off: the gold PERFECT! toast.
+  tookperfect() { play(3); const g = app.g; G.fryBatter(g); run(0.5); G.fryToBasket(g, 0); g.fryer.baskets[0].p = 1.0; G.fryLift(g, 0); run(0.2); },
 };
 
 for (let n = 7; n <= 13; n++) SHOTS[`intro${n}`] ||= () => { app.newLevel(n); run(0.6); }; // every part 2 intro card

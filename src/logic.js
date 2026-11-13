@@ -132,8 +132,13 @@ export function makeOrder(levelN, i, r) {
 }
 
 // Seconds of patience: a base plus time for each thing that has to be cooked
-// (the slow stations a little more).
-export const COOK_WAIT = { ready: 4, grill: 16, fry: 16, wok: 16, steam: 18, pot: 20 };
+// (the slow stations a little more). The grill, fryer, steamer and noodle pot
+// cook 1.5x slower since Nov 13, so their waits are 1.5x too (were 16, 16, 18
+// and 20); the wok cooks as fast as you toss, so it stays at 16.
+export const COOK_WAIT = { ready: 4, grill: 24, fry: 24, wok: 16, steam: 27, pot: 30 };
+// A line of guests: everyone waits at once, so each waits this much longer
+// (1.9 until Nov 13; slower cooking means the line moves a little slower).
+export const QUEUE_PATIENCE = 2.1;
 export function patienceFor(lines, levelN, look = null, vip = false) {
   const def = levelDef(levelN);
   let p = levelN === 1 ? 22 : 26;
@@ -142,7 +147,7 @@ export function patienceFor(lines, levelN, look = null, vip = false) {
     if (l.sauce) p += 3;
   }
   // A line of guests: everyone waits at once, so each waits longer.
-  if (def && def.queue > 1) p *= 1.9;
+  if (def && def.queue > 1) p *= QUEUE_PATIENCE;
   if (typeof look === 'string' && SPIRITS[look]) p *= SPIRITS[look].patience;
   if (vip) p *= VIP_PATIENCE;
   return Math.round(p);
