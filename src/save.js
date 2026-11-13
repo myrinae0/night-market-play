@@ -5,7 +5,7 @@ import { newStory, normalizeStory } from './story.js';
 
 export const SETTINGS_KEYS = ['muted', 'musicVol', 'ambVol', 'sfxVol', 'tapControls'];
 export const defaultSettings = () => ({ muted: false, musicVol: 0.7, ambVol: 0.6, sfxVol: 1, tapControls: false });
-export const freshProgress = () => ({ stars: {}, wallet: 0, upgrades: {}, story: newStory() });
+export const freshProgress = () => ({ stars: {}, wallet: 0, upgrades: {}, story: newStory(), endlessBest: 0 });
 export const freshSave = () => ({ ...freshProgress(), ...defaultSettings() });
 
 // Fills in anything missing or broken in a save read from storage.
@@ -15,6 +15,7 @@ export function normalizeSave(raw) {
   if (!s.stars || typeof s.stars !== 'object') s.stars = {};
   if (!s.upgrades || typeof s.upgrades !== 'object') s.upgrades = {};
   s.wallet = Math.max(0, Math.round(Number(s.wallet) || 0));
+  s.endlessBest = Math.max(0, Math.round(Number(s.endlessBest) || 0));
   return s;
 }
 

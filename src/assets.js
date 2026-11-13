@@ -34,7 +34,7 @@ export function loadAssets() {
   return Promise.all(jobs);
 }
 
-const TINTS = { raw: '#f2a49a', batter: '#f6e2b0', pale: '#f4ecd8', burnt: '#2a1712' };
+const TINTS = { raw: '#f2a49a', batter: '#f6e2b0', pale: '#f4ecd8', burnt: '#2a1712', soggy: '#a8a49a' };
 const tintCache = new Map();
 // A copy of sprite `name` with every pixel moved `amount` (0..1, in 0.1 steps)
 // toward the tint colour. Alpha is kept, so outlines and shapes don't change.

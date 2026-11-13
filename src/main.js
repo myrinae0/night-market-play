@@ -2,18 +2,19 @@
 // sound hookup.
 import { W, H, C, setCtx } from './gfx.js';
 import { LEVELS, COOK, ITEMS, SHOP_FROM_LEVEL } from './data.js';
-import { grillState, fryState, levelDef, buyUpgrade, upgradeById, nightPay, scoreServe } from './logic.js';
+import { grillState, fryState, levelDef, buyUpgrade, upgradeById, nightPay, scoreServe, potBoiling, isUnlocked } from './logic.js';
 import * as G from './game.js';
-import { TABS_Y, PANEL_Y, tapMode, guestX, grillSlotX, basketX, WOK_CX } from './render.js';
-import { drawFrame, SLIDER, lineTyped } from './screens.js';
+import { TABS_Y, PANEL_Y, tapMode, guestX, grillSlotX, basketX, WOK_CX, steamX, POT_CX } from './render.js';
+import { drawFrame, SLIDER, lineTyped, choiceBox, dlgLineH, defaultTitlePage, TITLE_PAGES, logPages } from './screens.js';
 import { createFx, updateFx, spawn, floatText, coinBurst, bounce, toast } from './fx.js';
 import * as audio from './audio.js';
 import { loadAssets } from './assets.js';
 import { setCustomerScale, registerFoodArt } from './sprites.js';
 import { classify, flickAction, accepts, drop, findTarget, offTray, dragHint, missHint, DRAG_DIST } from './drag.js';
-import { SPIRITS, PEOPLE_QUIPS, isSpirit } from './spirits.js';
+import { SPIRITS, PEOPLE_QUIPS, REGULAR_LINES, isSpirit } from './spirits.js';
 import {
-  sceneFor, sceneById, startScene, advance, choose, skip, finishScene, relTips, unlockMemory,
+  sceneFor, sceneById, afterSceneFor, startScene, advance, choose, skip, finishScene, relTips, unlockMemory,
+  recordService, moodsFor,
 } from './story.js';
 import { freshSave, normalizeSave, clearProgress } from './save.js';
 
@@ -71,7 +72,12 @@ const app = {
   slide: null, pointer: null, reg: { hits: [], sources: [], targets: [], trayBox: null },
   shownCoins: 0, endAt: 0, frozen: false, banner: null, nightMemories: new Set(), lastPay: 0,
   dlg: null, dlgT: 0, dlgThen: null, shopNext: null, shopMsg: null,
+  titlePage: defaultTitlePage(save.stars), logPage: 0,
 
+  setTitlePage(i) { app.titlePage = Math.max(0, Math.min(TITLE_PAGES.length - 1, i)); },
+  setLogPage(i) { app.logPage = Math.max(0, Math.min(logPages() - 1, i)); },
+
+  say(text, good = false) { toast(app.fx, text, good); audio.play('tap'); },
   toggleMute() { app.muted = !app.muted; audio.setMuted(app.muted); save.muted = app.muted; writeSave(save); audio.play('tap'); },
   // The settings panel pauses the game while it is open.
   openSettings() { app.settings = true; app.confirmReset = false; app.drag = null; if (app.g) app.g.held = null; },
@@ -87,6 +93,7 @@ const app = {
     app.closeSettings();
     app.dlg = null; app.dlgThen = null; app.shopNext = null; app.shopMsg = null;
     app.slide = null; app.snap = null; app.nightMemories = new Set(); app.lastPay = 0; app.shownCoins = 0;
+    app.titlePage = 0; app.logPage = 0;
     app.toTitle();
     audio.play('trash');
   },
@@ -115,10 +122,13 @@ const app = {
   },
   newLevel(n) {
     app.screen = 'game';
-    app.g = G.createGame(n, { seed: seedParam, upgrades: save.upgrades, relTips: relTips(save.story), autoBasket: !!save.tapControls });
+    const def = levelDef(n);
+    app.g = G.createGame(n, {
+      seed: seedParam ?? (def && def.endless ? Math.floor(Math.random() * 1e9) : undefined), upgrades: save.upgrades, relTips: relTips(save.story), moods: moodsFor(save.story), autoBasket: !!save.tapControls,
+    });
     app.fx = createFx();
     app.shownCoins = 0; app.slide = null; app.drag = null; app.snap = null; app.banner = null;
-    app.nightMemories = new Set(); app.lastPay = 0;
+    app.nightMemories = new Set(); app.lastPay = 0; app.dogHinted = false;
     audio.setRain(!!app.g.def.rain);
   },
   startLevel() { G.start(app.g); audio.play('tap'); },
@@ -160,9 +170,11 @@ const app = {
   // ---------- story ----------
   openLog() { app.screen = 'log'; app.g = null; },
   replayScene(id) { app.startDialogue(sceneById(id), true, () => app.openLog()); },
+  // The scene after a level (night 13's epilogue), the first time it is cleared.
+  playAfter(sc) { app.startDialogue(sc, false, () => { app.toTitle(); app.titlePage = defaultTitlePage(save.stars); }); },
   startDialogue(sc, replay, then) {
     app.dlg = startScene(sc, save.story, { replay });
-    app.dlgT = 0; app.dlgThen = then;
+    app.dlgT = 0; app.dlgThen = then; app.dlgH = 0;
     app.screen = 'scene'; app.g = null;
     audio.setRain(!!levelDef(sc.level)?.rain);
   },
@@ -196,7 +208,8 @@ const app = {
 };
 
 // ---------- events -> sound and juice ----------
-const slotX = (g, station, slot) => (station === 'grill' ? grillSlotX(g, slot) : station === 'fryer' ? basketX(slot) : WOK_CX);
+const slotX = (g, station, slot) => (station === 'grill' ? grillSlotX(g, slot) : station === 'fryer' ? basketX(slot)
+  : station === 'steamer' ? steamX(slot) : station === 'pot' ? POT_CX : WOK_CX);
 // A spirit's memory waits until their reaction bubble is gone (t < 0 is hidden).
 function showBanner(who, text, memory) { app.banner = { who, text: text.toUpperCase(), memory, t: memory ? -0.8 : 0, life: memory ? 4.2 : 2.8 }; }
 function handleEvents() {
@@ -218,9 +231,24 @@ function handleEvents() {
       spawn(app.fx, 'wok', WOK_CX, PANEL_Y + 70, 'steam', 3);
       if (e.spill) app.fx.shake = 0.15;
     } else if (e.type === 'scorch') toast(app.fx, 'SCORCHING! TOSS IT!');
+    else if (e.type === 'lid') {
+      bounce(app.fx, `steamer:${e.slot}`);
+      if (!e.on) spawn(app.fx, 'steamer', steamX(e.slot), PANEL_Y + 70, 'steam', 10); // a puff as the lid comes off
+    } else if (e.type === 'boiled') {
+      spawn(app.fx, 'pot', POT_CX, PANEL_Y + 74, 'steam', 8);
+      if (G.currentStation(g).id !== 'pot') toast(app.fx, 'THE WATER IS BOILING', true);
+    }
     else if (e.type === 'arrive') {
       // Normal people can't see the spirits. Now and then one says so.
       if (typeof e.look === 'number' && !app.banner && (e.cid * 7 + g.level) % 3 === 0) showBanner('A GUEST', PEOPLE_QUIPS[(e.cid + g.level) % PEOPLE_QUIPS.length], false);
+      // A regular says hello the way they feel about you.
+      else if (e.regular && REGULAR_LINES[e.look] && (!app.banner || !app.banner.memory)) showBanner(SPIRITS[e.look].name, REGULAR_LINES[e.look][e.regular], false);
+    } else if (e.type === 'rush') {
+      toast(app.fx, 'RUSH! QUICK ORDERS', false);
+      audio.play('bell'); app.fx.shake = 0.15;
+    } else if (e.type === 'dog') {
+      if (e.result === 'ate') { spawn(app.fx, 'world', 20, 110, 'confetti', 10); bounce(app.fx, 'dog'); }
+      else if (e.result === 'hungry') { audio.play('sniff'); if (!app.dogHinted) { app.dogHinted = true; toast(app.fx, 'CHIMAEK LOOKS HUNGRY', true); } }
     } else if (e.type === 'served') {
       const c = g.line.find((x) => x.id === e.cid);
       const x = c ? Math.round(guestX(g, c)) : 52;
@@ -228,6 +256,8 @@ function handleEvents() {
       floatText(app.fx, x, 70, `${r.coins >= 0 ? '+' : ''}${r.coins}`, r.coins >= 0 ? C.yellow : C.red, true);
       if (r.tip > 0) floatText(app.fx, x, 82, `TIP +${r.tip}`, C.greenL);
       if (r.coins > 0) coinBurst(app.fx, x, 90, Math.min(12, Math.ceil(r.coins / 2)), 34, 3);
+      if (isSpirit(e.look)) { recordService(save.story, e.look, r.mood === 'happy'); writeSave(save); }
+      if (r.treat) floatText(app.fx, x, 94, `DOG BONUS +${r.treat}`, C.greenL);
       if (r.mood === 'happy') {
         spawn(app.fx, 'world', x, 80, 'confetti', 14);
         // A spirit you feed well remembers grandma: one new line per spirit per night.
@@ -237,12 +267,20 @@ function handleEvents() {
         }
       } else app.fx.shake = 0.2;
     } else if (e.type === 'walkout') {
+      if (isSpirit(e.look)) { recordService(save.story, e.look, false); writeSave(save); }
       const c = g.line.find((x) => x.id === e.cid);
       floatText(app.fx, c ? Math.round(guestX(g, c)) : 52, 70, 'WALKED OUT', C.red);
     } else if (e.type === 'end') {
       app.endAt = app.time;
       app.lastPay = nightPay(g.coins);
       save.wallet += app.lastPay;
+      app.newBest = false;
+      if (e.endless) { // the best endless night is kept
+        app.newBest = g.coins > (save.endlessBest || 0);
+        if (app.newBest) { save.endlessBest = g.coins; spawn(app.fx, 'top', 90, 100, 'confetti', 40); audio.sting(); }
+        writeSave(save);
+        continue;
+      }
       const best = save.stars[g.level] || 0;
       if (e.stars > best) save.stars[g.level] = e.stars;
       writeSave(save);
@@ -279,13 +317,31 @@ function ambient(dt) {
     const x = WOK_CX + (Math.random() - 0.5) * 40;
     if (Math.random() < dt * (g.wok.scorch > 0 ? 16 : 3)) spawn(app.fx, 'wok', x, PANEL_Y + 74, g.wok.scorch > 0 ? 'blacksmoke' : 'steam');
   }
+  g.steamer.forEach((b, i) => {
+    if (!b || !b.lid) return;
+    cooking += 1;
+    if (Math.random() < dt * 5) spawn(app.fx, 'steamer', steamX(i) + (Math.random() - 0.5) * 50, PANEL_Y + 66, 'steam');
+  });
+  if (g.pot) {
+    cooking += 1;
+    const x = POT_CX + (Math.random() - 0.5) * 70;
+    if (Math.random() < dt * (potBoiling(g.pot) ? 8 : 2)) spawn(app.fx, 'pot', x, PANEL_Y + 74, 'steam');
+  }
   crackleT -= dt;
-  if (cooking && crackleT <= 0) { audio.play(g.fryer.baskets.some(Boolean) && Math.random() < 0.5 ? 'bubble' : 'crackle', 0.05); crackleT = 0.08 + Math.random() * 0.12; }
+  if (cooking && crackleT <= 0) {
+    const bubbly = g.fryer.baskets.some(Boolean) || potBoiling(g.pot);
+    audio.play(bubbly && Math.random() < 0.5 ? 'bubble' : 'crackle', 0.05);
+    crackleT = 0.08 + Math.random() * 0.12;
+  }
 }
 
 function step(dt) {
   app.time += dt;
-  if (app.screen === 'scene') app.dlgT += dt;
+  if (app.screen === 'scene') {
+    app.dlgT += dt;
+    const want = app.dlg ? dlgLineH(app.dlg.cur) : 0; // the dialogue box eases to fit the line
+    app.dlgH = app.dlgH ? app.dlgH + (want - app.dlgH) * Math.min(1, dt * 18) : want;
+  }
   if (app.g) {
     G.update(app.g, dt);
     ambient(dt);
@@ -353,7 +409,9 @@ function finishDrag(d, p, now) {
   if (kind === 'tap') { toast(app.fx, dragHint(d.payload)); audio.play('tap'); return; }
   const fa = flickAction(d.payload);
   if (kind === 'flick' && fa) {
-    if (fa === 'flip') G.grillFlip(g, d.payload.slot); else G.wokToss(g);
+    if (fa === 'flip') G.grillFlip(g, d.payload.slot);
+    else if (fa === 'lift') { if (!G.steamLidOff(g, d.payload.slot)) toast(app.fx, 'DRAG IT TO THE TRAY'); }
+    else G.wokToss(g);
     return;
   }
   const tg = findTarget(app.reg.targets.filter((r) => accepts(g, d.payload, r.target)), p.x, p.y);
@@ -432,6 +490,11 @@ window.addEventListener('pointerup', (e) => {
     app.switchStation(dx < 0 ? 1 : -1); // swipe left shows the station to the right
     return;
   }
+  if (!app.settings && (app.screen === 'title' || app.screen === 'log') && Math.abs(dx) > 30 && Math.abs(dx) > Math.abs(dy) * 1.4) {
+    if (app.screen === 'title') app.setTitlePage(app.titlePage + (dx < 0 ? 1 : -1));
+    else app.setLogPage(app.logPage + (dx < 0 ? 1 : -1));
+    return;
+  }
   if (Math.hypot(dx, dy) > 10) return;
   const h = hitAt(p);
   if (!h) { if (g) g.held = null; return; }
@@ -459,19 +522,29 @@ window.addEventListener('keydown', (e) => {
     return;
   }
   if (app.screen === 'title') {
-    if (e.key === 'Enter' || e.key === ' ') app.playLevel(Math.max(...LEVELS.filter((L) => L.n === 1 || (save.stars[L.n - 1] || 0) >= 1).map((L) => L.n)));
+    if (e.key === 'Enter' || e.key === ' ') app.playLevel(Math.max(...LEVELS.filter((L) => isUnlocked(L.n, save.stars)).map((L) => L.n)));
+    else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') app.setTitlePage(app.titlePage + (e.key === 'ArrowRight' ? 1 : -1));
     return;
   }
   if (app.screen === 'shop') { if (e.key === 'Enter') app.leaveShop(); return; }
-  if (app.screen === 'log') { if (e.key === 'Enter') app.toTitle(); return; }
+  if (app.screen === 'log') {
+    if (e.key === 'Enter') app.toTitle();
+    else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') app.setLogPage(app.logPage + (e.key === 'ArrowRight' ? 1 : -1));
+    return;
+  }
   if (!g) return;
   if (g.phase === 'intro' && (e.key === 'Enter' || e.key === ' ')) return app.startLevel();
-  if (g.phase === 'end' && e.key === 'Enter') return g.stars > 0 && levelDef(g.level + 1) ? app.endNext() : app.newLevel(g.level);
+  if (g.phase === 'end' && e.key === 'Enter') {
+    if (g.endless) return app.newLevel(g.level);
+    const after = afterSceneFor(g.level);
+    if (g.stars > 0 && after && !save.story.seen[after.id]) return app.playAfter(after);
+    return g.stars > 0 && levelDef(g.level + 1) ? app.endNext() : app.newLevel(g.level);
+  }
   if (e.key === 'ArrowLeft' || e.key === 'a') app.switchStation(-1);
   else if (e.key === 'ArrowRight' || e.key === 'd') app.switchStation(1);
   else if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); G.serveAuto(g); }
   else if (e.key === 'Escape') g.held = null;
-  else if (/^[1-4]$/.test(e.key)) app.goStation(Number(e.key) - 1);
+  else if (/^[1-6]$/.test(e.key)) app.goStation(Number(e.key) - 1);
 });
 
 // ---------- debug / screenshot presets (?shot=NAME) ----------
@@ -493,6 +566,12 @@ function autoServe() {
       G.fryAdd(g); G.fryDip(g); run(0.5);
       if (g.fryer.bowl) G.fryToBasket(g);
       const s = g.fryer.baskets.findIndex(Boolean); run(g.cook.fry.time * 0.97); G.fryLift(g, s);
+    } else if (kind === 'steam') {
+      const s = g.steamer.indexOf(null);
+      G.steamAdd(g, l.item, s); G.steamLidOn(g, s); run(g.cook.steam.time); G.steamTake(g, s);
+    } else if (kind === 'pot') {
+      if (!g.pot) G.potWater(g);
+      run(g.cook.pot.boil + 0.1); G.potAdd(g, l.item); run(g.cook.pot.time * 0.97); G.potTake(g);
     } else {
       G.wokStart(g, l.item);
       while (g.wok.p < g.cook.wok.perfectLo + 0.01) { run(g.cook.wok.air + 0.05); G.wokToss(g); }
@@ -568,10 +647,11 @@ const SHOTS = {
   queue() { play(6); run(8); const g = app.g; G.grabReady(g, 'soda'); run(0.2); },
   queuedrag() { SHOTS.queue(); holdAt({ kind: 'serve' }, 146, 100); },
   shiba() { play(3); for (let i = 0; i < 7; i++) autoServe(); waitForGuest(); },
-  locked() { play(1); app.goStation(3); run(0.5); },
+  locked() { play(1); app.goStation(1); run(0.5); },
+  locked7() { play(7); app.goStation(5); run(0.5); },
   end() { play(1); while (app.g.phase === 'play') autoServe(); run(2.2); },
   end5() { save.wallet = 240; play(5); while (app.g.phase === 'play') autoServe(); run(2.2); },
-  shop() { save.wallet = 260; save.stars = { 5: 2 }; save.upgrades = { fastfry: true }; app.openShop(6); },
+  shop() { save.wallet = 520; save.stars = { 5: 2 }; save.upgrades = { fastfry: true }; app.openShop(6); },
   settings() { SHOTS.grill(); app.setVolume('music', 0.6); app.setVolume('amb', 0.45); app.openSettings(); },
   settingstap() { save.tapControls = true; SHOTS.settings(); },
   // Settings from the title (RESET PROGRESS at the bottom), and its confirmation mid-level.
@@ -584,11 +664,59 @@ const SHOTS = {
     G.grillAdd(g, 'sausage'); run(1); G.pickSauce(g, 'spicy'); run(0.3);
   },
   memory() { play(2); autoServe(); run(0.2); },
+  // ---------- part 2 ----------
+  title2() { save.wallet = 1320; save.stars = { 1: 3, 2: 3, 3: 2, 4: 3, 5: 3, 6: 2, 7: 3, 8: 2, 9: 1 }; app.titlePage = 1; },
+  intro7() { app.newLevel(7); run(0.6); },
+  intro10() { app.newLevel(10); run(0.6); },
+  intro13() { app.newLevel(13); run(0.6); },
+  introtap7() { save.tapControls = true; app.newLevel(7); run(0.6); },
+  steamer() { // one basket steaming with the lid on, one open with buns, sauce on the tray
+    play(7); const g = app.g;
+    G.steamAdd(g, 'mandu', 0); G.steamLidOn(g, 0); run(2.5);
+    G.steamAdd(g, 'bun', 1); G.steamLidOn(g, 1); run(4.8); G.steamLidOff(g, 1); run(0.3);
+    g.tray.push({ item: 'mandu', cook: 'done', perfect: true, sauce: 'chilioil' });
+  },
+  steamlid() { play(7); const g = app.g; G.steamAdd(g, 'mandu', 0); run(0.3); holdAt({ kind: 'lid' }, 50, 262); },
+  steamtap() { save.tapControls = true; play(7); const g = app.g; G.steamAdd(g, 'mandu'); run(3); G.steamAdd(g, 'bun'); run(1); },
+  pot() { play(10); const g = app.g; G.potWater(g); run(3.2); G.potAdd(g, 'ramyeon'); run(3.4); g.tray.push({ item: 'ramyeon', cook: 'done', perfect: true, sauce: 'egg' }); },
+  potboil() { play(10); const g = app.g; G.potWater(g); run(1.4); holdAt({ kind: 'bin', item: 'ramyeon' }, 92, 260); },
+  pottap() { save.tapControls = true; play(10); const g = app.g; G.potAdd(g, 'ramyeon'); run(1.5); },
+  tabs6() { play(11); const g = app.g; G.potWater(g); G.grillAdd(g, 'galbi'); run(4.6); app.goStation(4); run(0.5); },
+  festival() { play(13); run(9); const g = app.g; G.grabReady(g, 'beer'); run(0.2); },
+  // ---------- part 2 features ----------
+  regulars() { // glad and grumpy regulars in the line
+    save.story.service = { fox: { happy: 4, missed: 0 }, moss: { happy: 0, missed: 3 }, lantern: { happy: 1, missed: 0 } };
+    save.story.rel = { fox: 1 };
+    play(8); run(9); const g = app.g; G.grabReady(g, 'tea'); run(0.2);
+  },
+  treat() { // Chimaek is hungry; plain beef on the grill and on the tray
+    play(9); const g = app.g; run(17); G.grillAdd(g, 'plain', 0); G.grillAdd(g, 'galbi', 1); run(3.4); G.grillFlip(g, 0); run(1);
+    g.tray.push({ item: 'plain', cook: 'done', perfect: true, sauce: null }); app.goStation(1); run(0.5);
+  },
+  treatdrag() { SHOTS.treat(); holdAt({ kind: 'tray', index: 0 }, 20, 120); },
+  treatfed() { SHOTS.treat(); G.feedDog(app.g, { kind: 'tray', index: 0 }); run(0.5); },
+  treatno() { // she sniffs a sauced galbi and turns away
+    play(9); const g = app.g; run(17); g.tray.push({ item: 'galbi', cook: 'done', perfect: false, sauce: 'honey' });
+    G.feedDog(g, { kind: 'tray', index: 0 }); run(0.4);
+  },
+  treattap() { save.tapControls = true; SHOTS.treat(); },
+  special() { play(11); const g = app.g; G.potWater(g); run(10); G.grabReady(g, 'soda'); run(0.2); },
+  rush() { play(12); const g = app.g; for (let i = 0; i < 5; i++) autoServe(); run(4); G.grabReady(g, 'kimbap'); run(0.3); },
+  endless() { save.stars = { 13: 1 }; save.endlessBest = 1180; play(99); const g = app.g; run(30); g.lost = 1; G.grabReady(g, 'soda'); run(0.3); },
+  introendless() { save.stars = { 13: 1 }; app.newLevel(99); run(0.6); },
+  endendless() { save.stars = { 13: 1 }; save.endlessBest = 900; save.wallet = 2400; play(99); for (let i = 0; i < 40 && app.g.phase === 'play'; i++) autoServe(); const g = app.g; g.lost = 3; run(2.5); },
+  title2end() { SHOTS.title2(); save.stars[13] = 2; save.stars[10] = 3; save.stars[11] = 3; save.stars[12] = 2; save.endlessBest = 1432; },
+  end13() { save.wallet = 1900; save.stars = { 12: 2 }; play(13); while (app.g.phase === 'play') autoServe(); run(2.2); },
+  epilogue() { save.stars = { 13: 2 }; app.playAfter(afterSceneFor(13)); for (let i = 0; i < 3; i++) { app.dlgT = 99; app.dlgTap(); } run(0.8); },
+  epiloguechoice() { app.playAfter(afterSceneFor(13)); for (let i = 0; i < 5; i++) { app.dlgT = 99; app.dlgTap(); } run(1.5); },
+  storylog2() { save.story.seen = { l7: true, l8: true, l9: true, l10: true }; save.story.memories = { wisp: 2, fox: 5 }; app.openLog(); app.setLogPage(1); },
+  scene13() { app.playLevel(13); for (let i = 0; i < 4; i++) { app.dlgT = 99; app.dlgTap(); } run(1); },
   cast() { app.screen = 'cast'; run(0.5); },
 };
 
+for (let n = 7; n <= 13; n++) SHOTS[`intro${n}`] ||= () => { app.newLevel(n); run(0.6); }; // every part 2 intro card
 if (params.has('cs')) setCustomerScale(Math.max(1, Math.min(5, Number(params.get('cs')) || 3)));
-window.nightMarket = { app, G, step, SHOTS, save, scoreServe };
+window.nightMarket = { app, G, step, SHOTS, save, scoreServe, choiceBox };
 loadAssets().then(() => {
   registerFoodArt();
   const shot = params.get('shot');
@@ -597,6 +725,7 @@ loadAssets().then(() => {
     app.frozen = true;
   } else if (params.has('level')) {
     app.newLevel(Math.max(1, Math.min(LEVELS.length, Number(params.get('level')) || 1)));
+    app.titlePage = defaultTitlePage(save.stars);
   }
   window.nightMarket.ready = true;
   requestAnimationFrame(frame);

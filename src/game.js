@@ -1,10 +1,12 @@
 // Game state and player actions (no DOM). The renderer reads state; main.js
 // turns input (drags or taps) into these actions and plays the events they emit.
-import { ITEMS, SAUCES, FRY_BASKETS, STATION_ORDER, STATIONS } from './data.js';
+import { ITEMS, SAUCES, FRY_BASKETS, STEAM_BASKETS, sauceStations, MOODS, TREAT, RUSH_GAP } from './data.js';
 import {
   levelDef, makeOrders, newGrillItem, stepGrill, flipGrill, grillState, grillPerfect,
   newFryItem, stepFry, fryState, isPerfect, trayItem, canSauce, scoreServe, levelMax, starsFor,
-  stationStatus, newWokItem, stepWok, tossWok, wokState, wokPerfect, upgradeEffects, cookSpecs,
+  levelStations, stationStatus, newWokItem, stepWok, tossWok, wokState, wokPerfect, upgradeEffects, cookSpecs,
+  newSteamItem, stepSteam, steamState, newPot, stepPot, potState, potBoiling,
+  rng, endlessOrder, endlessGap, endlessSpecial,
 } from './logic.js';
 import { SPIRITS } from './spirits.js';
 
@@ -14,25 +16,37 @@ const DIP_TIME = 0.45;
 const ARRIVE_GAP = 3.5; // queue levels: seconds between new guests joining the line
 
 // opts: seed, upgrades ({ id: true }), relTips ({ spirit: coins }),
-// autoBasket (tap controls: battered chicken drops into a basket by itself).
+// moods ({ spirit: 'glad' | 'ok' | 'grumpy' }, regulars from level 8),
+// autoBasket (tap controls' helpers: battered chicken drops into a basket by
+// itself, the steamer's lid goes on by itself, noodles wait for the boil).
 export function createGame(levelN, opts = {}) {
   const def = levelDef(levelN);
   const orders = makeOrders(levelN, opts.seed);
   const fx = upgradeEffects(opts.upgrades);
+  const shown = levelStations(levelN);
+  const seed = (opts.seed ?? def.seed) >>> 0;
   const g = {
     level: levelN, def, orders, max: levelMax(orders),
+    // Endless nights make their guests as they go, from the night's seed.
+    endless: !!def.endless, rng: def.endless ? rng(seed) : null, special: def.endless ? endlessSpecial(seed) : def.special || null,
     phase: 'intro', time: 0,
     custIdx: -1, customer: null, line: [], queueMax: def.queue || 1, arriveT: 0, nextId: 1,
     coins: 0, served: 0, lost: 0, results: [],
-    stations: STATION_ORDER.map((id) => ({ id, status: stationStatus(levelN, id, STATIONS) })),
-    station: STATION_ORDER.indexOf(def.intro.station),
+    stations: shown.map((id) => ({ id, status: stationStatus(levelN, id) })),
+    station: Math.max(0, shown.indexOf(def.intro.station)),
     grill: new Array(fx.grillSlots).fill(null),
     fryer: { bowl: null, baskets: new Array(FRY_BASKETS).fill(null) },
     wok: null,
+    steamer: new Array(STEAM_BASKETS).fill(null),
+    pot: null,
     tray: [], trayMax: fx.trayMax,
     cook: cookSpecs(opts.upgrades),
     patienceMul: fx.patienceMul,
     relTips: opts.relTips || {},
+    moods: def.regulars ? opts.moods || {} : {},
+    // Chimaek's treat (level 9 on): when she wants one, plain grilled beef
+    // makes tips worth more for a while.
+    dog: def.treat ? { want: false, next: TREAT.first, until: 0, happyUntil: 0, fed: 0, ateT: -9, refuseT: -9 } : null,
     autoBasket: opts.autoBasket !== false,
     held: null, // a sauce id waiting for a tray target (tap controls)
     events: [],
@@ -57,34 +71,40 @@ export function start(g) {
 
 // The next guest joins the line.
 function arrive(g) {
+  if (g.endless && g.custIdx + 1 >= g.orders.length) g.orders.push(endlessOrder(g.orders.length, g.rng, g.special));
   if (g.custIdx + 1 >= g.orders.length) return false;
   g.custIdx += 1;
   const o = g.orders[g.custIdx];
   const sp = typeof o.look === 'string' ? SPIRITS[o.look] : null;
-  const p = o.patience * g.patienceMul;
+  const mood = (sp && g.moods[o.look]) || null; // a regular remembers you
+  const p = o.patience * g.patienceMul * (mood ? MOODS[mood].patience : 1);
   // Queue levels: each guest stands in the leftmost free spot at the counter.
   const used = new Set(g.line.map((c) => c.col));
   let col = 0;
   while (used.has(col)) col++;
   const c = {
     id: g.nextId++, order: o, look: o.look, patience: p, maxPatience: p, col,
-    phase: 'enter', t: 0, mood: 'wait', result: null, enterTime: sp ? sp.enter : ENTER_TIME,
+    phase: 'enter', t: 0, mood: 'wait', result: null, enterTime: sp ? sp.enter : ENTER_TIME, regular: mood,
   };
   g.line.push(c);
   g.customer = g.line[0];
-  g.arriveT = ARRIVE_GAP;
+  // The next guest joins sooner during a rush (and as an endless night goes on).
+  const nextO = g.orders[g.custIdx + 1];
+  g.arriveT = (nextO && nextO.rush) || (g.endless && endlessRushNext(g)) ? RUSH_GAP : g.endless ? endlessGap(g.custIdx) : ARRIVE_GAP;
   emit(g, 'sfx', { name: 'bell' });
-  emit(g, 'arrive', { look: o.look, cid: c.id, col });
+  emit(g, 'arrive', { look: o.look, cid: c.id, col, regular: mood });
+  if (o.rush && !(g.orders[g.custIdx - 1] || {}).rush) emit(g, 'rush');
   return true;
 }
 
+const endlessRushNext = (g) => !!(g.orders[g.custIdx] && g.orders[g.custIdx].rush);
 function endLevel(g) {
   g.phase = 'end';
   g.customer = null;
   g.coins = Math.max(0, g.coins);
-  g.stars = starsFor(g.coins, g.max);
-  emit(g, 'end', { stars: g.stars });
-  emit(g, 'sfx', { name: g.stars > 0 ? 'win' : 'lose' });
+  g.stars = g.endless ? 0 : starsFor(g.coins, g.max);
+  emit(g, 'end', { stars: g.stars, endless: g.endless });
+  emit(g, 'sfx', { name: g.stars > 0 || (g.endless && g.served > 0) ? 'win' : 'lose' });
 }
 
 export const waiting = (g) => g.line.filter((c) => c.phase === 'wait');
@@ -124,6 +144,26 @@ export function update(g, dt) {
     if (!warned && g.wok.scorch > 0) emit(g, 'scorch');
     if (before !== after) emit(g, 'sfx', { name: after === 'burnt' ? 'burn' : 'ready', station: 'wok' });
   }
+  g.steamer.forEach((b, i) => {
+    if (!b) return;
+    const before = steamState(b, g.cook.steam);
+    stepSteam(b, dt, g.cook.steam);
+    const after = steamState(b, g.cook.steam);
+    if (before !== after) emit(g, 'sfx', { name: after === 'burnt' ? 'burn' : 'ready', station: 'steamer', slot: i });
+  });
+  if (g.pot) {
+    const pt = g.pot;
+    const wasBoiling = potBoiling(pt), before = potState(pt, g.cook.pot);
+    stepPot(pt, dt, g.cook.pot);
+    if (!wasBoiling && potBoiling(pt)) {
+      emit(g, 'sfx', { name: 'boil' });
+      emit(g, 'boiled');
+      if (pt.queued) { const item = pt.queued; pt.queued = null; potAdd(g, item); }
+    }
+    const after = potState(pt, g.cook.pot);
+    if (before && before !== after) emit(g, 'sfx', { name: after === 'burnt' ? 'burn' : 'ready', station: 'pot' });
+  }
+  if (g.dog) stepDog(g, dt);
   // Guests: walk in, wait (patience runs down), leave.
   for (const c of g.line) {
     c.t += dt;
@@ -139,6 +179,8 @@ export function update(g, dt) {
       }
     }
   }
+  // Endless nights end after the last strike (every walk-out is one).
+  if (g.endless && g.lost >= g.def.strikes) { endLevel(g); return; }
   const before = g.line.length;
   g.line = g.line.filter((c) => !(c.phase === 'leave' && c.t >= LEAVE_TIME));
   g.customer = g.line[0] || null;
@@ -149,7 +191,7 @@ export function update(g, dt) {
   if (g.queueMax <= 1) {
     if (g.line.length === 0 && before > 0) arrive(g);
   } else if (g.line.length < g.queueMax && (g.arriveT <= 0 || present === 0)) arrive(g);
-  if (g.line.length === 0 && g.custIdx + 1 >= g.orders.length) endLevel(g);
+  if (!g.endless && g.line.length === 0 && g.custIdx + 1 >= g.orders.length) endLevel(g);
 }
 
 // ---------- stations ----------
@@ -223,6 +265,8 @@ export function discard(g, station, slot = 0) {
   if (station === 'grill' && g.grill[slot]) g.grill[slot] = null;
   else if (station === 'fryer' && g.fryer.baskets[slot]) g.fryer.baskets[slot] = null;
   else if (station === 'wok' && g.wok) g.wok = null;
+  else if (station === 'steamer' && g.steamer[slot]) g.steamer[slot] = null;
+  else if (station === 'pot' && g.pot && g.pot.item) g.pot = null;
   else return false;
   return toss(g, station, slot);
 }
@@ -328,6 +372,92 @@ export function wokTake(g) {
   return true;
 }
 
+// Steamer: raw mandu or a bun goes in an empty basket (lid off). A lid goes
+// on a basket with food in it; only then does it steam. Lift the lid (flick
+// up) to take the food out. Tap controls put the lid on and lift it for you.
+export function steamAdd(g, item, slot = null) {
+  if (g.phase !== 'play' || ITEMS[item]?.kind !== 'steam' || !stationOpen(g, 'steamer')) return false;
+  const i = slot == null ? g.steamer.indexOf(null) : (g.steamer[slot] === null ? slot : -1);
+  if (i < 0) { emit(g, 'sfx', { name: 'nope' }); emit(g, 'toast', { text: slot == null ? 'BASKETS FULL' : 'THAT BASKET IS FULL' }); return false; }
+  g.steamer[i] = newSteamItem(item);
+  emit(g, 'sfx', { name: 'grab' });
+  emit(g, 'place', { station: 'steamer', slot: i });
+  if (g.autoBasket) steamLidOn(g, i);
+  return true;
+}
+export function steamLidOn(g, slot) {
+  const b = g.steamer[slot];
+  if (!b || b.lid) return false;
+  b.lid = true;
+  b.lidT = g.time;
+  emit(g, 'sfx', { name: 'lid' });
+  emit(g, 'lid', { slot, on: true });
+  return true;
+}
+export function steamLidOff(g, slot) {
+  const b = g.steamer[slot];
+  if (!b || !b.lid) return false;
+  b.lid = false;
+  b.lidT = g.time;
+  emit(g, 'sfx', { name: 'steam' });
+  emit(g, 'lid', { slot, on: false });
+  return true;
+}
+// Tap controls' LID button.
+export const steamLid = (g, slot) => (g.steamer[slot]?.lid ? steamLidOff(g, slot) : steamLidOn(g, slot));
+export const freeLids = (g) => g.steamer.filter((b) => !b || !b.lid).length;
+export function steamTake(g, slot) {
+  const b = g.steamer[slot];
+  if (!b) return false;
+  if (b.lid) steamLidOff(g, slot); // tap controls lift it for you
+  const st = steamState(b, g.cook.steam);
+  if (st === 'burnt') { g.steamer[slot] = null; return toss(g, 'steamer', slot); }
+  const t = trayItem(b.item, st, isPerfect(b.p, g.cook.steam));
+  if (!trayAdd(g, t)) return false;
+  g.steamer[slot] = null;
+  emit(g, 'sfx', { name: t.cook === 'done' ? 'grab' : 'nope' });
+  if (t.cook === 'raw') emit(g, 'toast', { text: 'NOT STEAMED YET!' });
+  if (t.perfect) emit(g, 'toast', { text: 'FLUFFY!', good: true });
+  return true;
+}
+
+// Noodle pot: kettle -> wait for the boil -> ramyeon in -> take it in the gold.
+export function potWater(g) {
+  if (g.phase !== 'play' || !stationOpen(g, 'pot')) return false;
+  if (g.pot) { emit(g, 'sfx', { name: 'nope' }); emit(g, 'toast', { text: 'THERE IS WATER IN IT' }); return false; }
+  g.pot = newPot();
+  emit(g, 'sfx', { name: 'pour' });
+  emit(g, 'place', { station: 'pot', slot: 0 });
+  return true;
+}
+export function potAdd(g, item) {
+  if (g.phase !== 'play' || ITEMS[item]?.kind !== 'pot' || !stationOpen(g, 'pot')) return false;
+  const pt = g.pot;
+  // Tap controls: with no water yet, it fills the pot and the noodles wait for the boil.
+  if (!pt && g.autoBasket) { potWater(g); g.pot.queued = item; return true; }
+  if (pt && !potBoiling(pt) && g.autoBasket && !pt.queued && !pt.item) { pt.queued = item; emit(g, 'toast', { text: 'IN WHEN IT BOILS', good: true }); return true; }
+  const why = !pt ? 'ADD WATER FIRST' : pt.item || pt.queued ? 'THE POT IS BUSY' : !potBoiling(pt) ? 'WAIT FOR THE BOIL' : null;
+  if (why) { emit(g, 'sfx', { name: 'nope' }); emit(g, 'toast', { text: why }); return false; }
+  pt.item = item;
+  pt.p = 0;
+  emit(g, 'sfx', { name: 'plop' });
+  emit(g, 'place', { station: 'pot', slot: 0 });
+  return true;
+}
+export function potTake(g) {
+  const pt = g.pot;
+  if (!pt || !pt.item) return false;
+  const st = potState(pt, g.cook.pot);
+  if (st === 'burnt') { g.pot = null; return toss(g, 'pot', 0); }
+  const t = trayItem(pt.item, st, isPerfect(pt.p, g.cook.pot));
+  if (!trayAdd(g, t)) return false;
+  g.pot = null;
+  emit(g, 'sfx', { name: t.cook === 'done' ? 'grab' : 'nope' });
+  if (t.cook === 'raw') emit(g, 'toast', { text: 'STILL HARD!' });
+  if (t.perfect) emit(g, 'toast', { text: 'SPRINGY!', good: true });
+  return true;
+}
+
 // Sauces (tap controls): tap a bottle. With exactly one item it fits, it goes
 // on at once; otherwise the bottle is held until you tap an item on the tray.
 export function pickSauce(g, sauce) {
@@ -344,21 +474,37 @@ export function pickSauce(g, sauce) {
   emit(g, 'sfx', { name: 'tap' });
   return true;
 }
+// Is there food of station `st` still cooking (or waiting to be taken)?
+function busy(g, st) {
+  if (st === 'grill') return g.grill.some(Boolean);
+  if (st === 'fryer') return g.fryer.baskets.some(Boolean) || !!g.fryer.bowl;
+  if (st === 'wok') return !!g.wok;
+  if (st === 'steamer') return g.steamer.some(Boolean);
+  if (st === 'pot') return !!(g.pot && (g.pot.item || g.pot.queued));
+  return false;
+}
+const COOK_FIRST = {
+  grill: 'GRILL SOMETHING FIRST', fryer: 'FRY CHICKEN FIRST', wok: 'COOK A WOK DISH FIRST', steamer: 'STEAM MANDU FIRST', pot: 'COOK RAMYEON FIRST',
+};
 // Why no tray item can take this sauce, in a few words for the toast.
 // Food still cooking comes first: that is the item the player is thinking of.
 export function sauceHint(g, sauce) {
-  const st = SAUCES[sauce].station;
-  const cooking = st === 'grill' ? g.grill.some(Boolean) : st === 'wok' ? !!g.wok : (g.fryer.baskets.some(Boolean) || !!g.fryer.bowl);
-  if (cooking) return 'TAKE IT TO THE TRAY FIRST';
-  if (g.tray.some((t) => ITEMS[t.item].station === st && t.sauce)) return st === 'wok' ? 'ALREADY TOPPED' : 'ALREADY SAUCED';
-  return st === 'grill' ? 'GRILL SOMETHING FIRST' : st === 'wok' ? 'COOK A WOK DISH FIRST' : 'FRY CHICKEN FIRST';
+  const s = SAUCES[sauce];
+  const sts = sauceStations(sauce).filter((st) => stationOpen(g, st));
+  if (sts.some((st) => busy(g, st))) return 'TAKE IT TO THE TRAY FIRST';
+  if (g.tray.some((t) => sts.includes(ITEMS[t.item].station) && t.sauce && (!s.only || s.only.includes(t.item)))) return s.topping ? 'ALREADY TOPPED' : 'ALREADY SAUCED';
+  if (s.only && g.tray.some((t) => sts.includes(ITEMS[t.item].station))) return `ONLY ON ${s.only.map((id) => ITEMS[id].short).join(' OR ')}`;
+  if (sts.length > 1) return s.topping ? 'COOK NOODLES OR A WOK DISH' : 'COOK SOMETHING FIRST';
+  return COOK_FIRST[sts[0] || sauceStations(sauce)[0]];
 }
 export function applySauce(g, index, sauce = g.held) {
   const t = g.tray[index];
   if (!t || !sauce) return false;
   if (!canSauce(t, sauce)) {
     emit(g, 'sfx', { name: 'nope' });
-    emit(g, 'toast', { text: t.sauce && ITEMS[t.item].station === SAUCES[sauce].station ? (SAUCES[sauce].topping ? 'ALREADY TOPPED' : 'ALREADY SAUCED') : 'IT DOES NOT GO ON THAT' });
+    const s = SAUCES[sauce];
+    const same = sauceStations(sauce).includes(ITEMS[t.item].station) && (!s.only || s.only.includes(t.item));
+    emit(g, 'toast', { text: t.sauce && same ? (s.topping ? 'ALREADY TOPPED' : 'ALREADY SAUCED') : 'IT DOES NOT GO ON THAT' });
     return false;
   }
   t.sauce = sauce;
@@ -384,13 +530,22 @@ export function serve(g, idx = null) {
   if (g.phase !== 'play' || !c || c.phase !== 'wait') return null;
   if (g.tray.length === 0) { emit(g, 'sfx', { name: 'nope' }); emit(g, 'toast', { text: 'TRAY IS EMPTY' }); return null; }
   const res = scoreServe(c.order, g.tray, c.patience / c.maxPatience);
-  // Spirits you get on with tip a little more; the moss golem adds old coins.
+  // Spirits you get on with tip a little more (and glad regulars more
+  // again, grumpy ones less); the moss golem adds old coins.
   if (res.mood === 'happy' && typeof c.look === 'string' && SPIRITS[c.look]) {
-    const tip = Math.max(0, res.tip + (g.relTips[c.look] || 0));
+    const moodTip = c.regular ? MOODS[c.regular].tip : 0;
+    const tip = Math.max(0, res.tip + (g.relTips[c.look] || 0) + moodTip);
     const old = SPIRITS[c.look].oldCoins || 0;
     res.coins += tip - res.tip + old;
     res.tip = tip;
     res.oldCoins = old;
+  }
+  // A happy Chimaek: every tip is worth more for a while.
+  if (res.mood === 'happy' && treatActive(g) && res.tip > 0) {
+    const tip = Math.round(res.tip * TREAT.tipMul);
+    res.coins += tip - res.tip;
+    res.treat = tip - res.tip;
+    res.tip = tip;
   }
   g.tray = [];
   g.held = null;
@@ -402,6 +557,79 @@ export function serve(g, idx = null) {
   emit(g, 'sfx', { name: res.mood === 'happy' ? 'serve' : 'meh' });
   return res;
 }
+// ---------- Chimaek's treat ----------
+// She gets hungry now and then (dog.want). Plain grilled beef, cooked and
+// not burnt, with nothing on it, makes her happy: tips are worth TREAT.tipMul
+// times for TREAT.lasts seconds. Anything else she sniffs and turns away from
+// (it stays where it was). Burnt food goes in the bin, never to the dog.
+export const treatActive = (g) => !!g.dog && g.time < g.dog.happyUntil;
+function stepDog(g, dt) {
+  const d = g.dog;
+  if (d.want) {
+    if (g.time >= d.until) { d.want = false; d.next = g.time + TREAT.retry; emit(g, 'dog', { result: 'gaveup' }); }
+  } else if (g.time >= d.next && !treatActive(g)) {
+    d.want = true;
+    d.until = g.time + TREAT.wait;
+    emit(g, 'dog', { result: 'hungry' });
+  }
+}
+// Why Chimaek will not eat this tray item (or grill item), or null if she will.
+export function treatProblem(it) {
+  if (!it) return 'PUT A TREAT ON THE TRAY';
+  if (it.cook === 'burnt') return 'BURNT GOES IN THE BIN';
+  if (ITEMS[it.item].kind === 'ready' && ITEMS[it.item].drink) return 'NOT FOR DOGS';
+  if (it.sauce) return 'NO SAUCE FOR DOGS';
+  if (!ITEMS[it.item].treat) return 'ONLY PLAIN MEAT FOR HER';
+  if (it.cook !== 'done') return 'NOT COOKED YET';
+  return null;
+}
+// Offer Chimaek something: { kind: 'tray', index } or { kind: 'grill', slot }.
+// Returns 'ate', 'refused' or 'full' (null if there is nothing to offer).
+export function feedDog(g, from) {
+  const d = g.dog;
+  if (!d || g.phase !== 'play') return null;
+  let it = null;
+  if (from.kind === 'tray') it = g.tray[from.index];
+  else if (from.kind === 'grill' && g.grill[from.slot]) {
+    const gi = g.grill[from.slot];
+    it = { item: gi.item, cook: grillState(gi, g.cook.grill), sauce: null };
+  }
+  if (!it) return null;
+  const why = treatProblem(it);
+  if (why) {
+    d.refuseT = g.time;
+    emit(g, 'dog', { result: 'refused', why });
+    emit(g, 'sfx', { name: 'sniff' });
+    emit(g, 'toast', { text: why });
+    return 'refused';
+  }
+  if (!d.want) {
+    emit(g, 'sfx', { name: 'nope' });
+    emit(g, 'toast', { text: 'SHE IS NOT HUNGRY NOW' });
+    return 'full';
+  }
+  if (from.kind === 'tray') g.tray.splice(from.index, 1);
+  else g.grill[from.slot] = null;
+  d.want = false;
+  d.fed += 1;
+  d.ateT = g.time;
+  d.happyUntil = g.time + TREAT.lasts;
+  d.next = g.time + TREAT.every;
+  emit(g, 'dog', { result: 'ate' });
+  emit(g, 'sfx', { name: 'yip' });
+  emit(g, 'toast', { text: `GOOD DOG! TIPS X${TREAT.tipMul}`, good: true });
+  return 'ate';
+}
+// Tap controls: tap Chimaek to give her the treat on the tray (or, if there
+// is none, the last thing on the tray, so she can say no).
+export function tapDog(g) {
+  if (!g.dog || g.phase !== 'play') return null;
+  if (!g.tray.length) { emit(g, 'sfx', { name: 'nope' }); emit(g, 'toast', { text: 'PUT A TREAT ON THE TRAY' }); return null; }
+  let i = g.tray.findIndex((t) => !treatProblem(t));
+  if (i < 0) i = g.tray.length - 1;
+  return feedDog(g, { kind: 'tray', index: i });
+}
+
 // Tap controls' SERVE button: the first guest whose order the tray matches
 // exactly, otherwise the first waiting guest.
 export function serveAuto(g) {

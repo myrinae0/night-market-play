@@ -13,24 +13,32 @@ Made for this game (MIT, see LICENSE):
 
 - **The spirits** (`src/art.js`): Deung the lantern ghost, Yeo the fox spirit and
   its mask, Ikki the moss golem, Gaeguri the rain frog, Nabang the moth postman,
-  Jongi the paper crane and Gim the steam wisp. Original 16 x 16 designs drawn in
-  code in the food pack's style (its dark brown outline, flat shading). They are
-  inspired by the mood of hand-drawn Japanese fantasy films, but none is based on
-  a character from any film or game.
+  Jongi the paper crane, Gim the steam wisp, Ttuk the clay pot imp and Dal the
+  moon rabbit. Original 16 x 16 designs drawn in code in the food pack's style
+  (its dark brown outline, flat shading). They are inspired by the mood of
+  hand-drawn Japanese fantasy films, but none is based on a character from any
+  film or game. The cold voice of the night 13 epilogue has no sprite, only
+  frost and two eyes, drawn in code.
 - **The wok dishes** (`src/art.js`): raw rice cakes, tteokbokki, raw glass
   noodles, japchae and fried rice, drawn in code to match the food pack where it
   has no sprite.
-- Chimaek the Shiba (a 16 x 16 sprite in `src/sprites.js`), the barley tea and
-  beer sprites, the market scene, rain, stall, stations, wok, UI, icons and
-  `icon.svg`.
-- Cooking stages (raw, battered, pale, burnt) are per-pixel recolours of the food
+- **Part 2 food** (`src/art.js`): raw and steamed mandu, raw and steamed buns,
+  a block of instant ramyeon and a bowl of ramyeon, the soy dip and chili oil
+  dishes, and Chimaek's plain beef (raw and grilled), drawn in code in the same
+  style (the CC0 pack has no sprites for these).
+- Chimaek the Shiba (a 16 x 16 sprite in `src/sprites.js`, with her back turned
+  when she refuses a treat), the barley tea and beer sprites, the market scene,
+  rain, the festival moon and lanterns, snow and frost, stall, stations, wok,
+  bamboo steamer, lids, kettle, noodle pot, UI, icons and `icon.svg`.
+- Cooking stages (raw, battered, pale, burnt, soggy) are per-pixel recolours of the food
   sprites made at run time (`src/assets.js`).
 - Bitmap fonts (`src/font.js`, with `<` and `=` added): copied from Chris Llaga's
   Crowd Runner (MIT).
 - All sound: synthesized with WebAudio at run time, no audio files. Music in
   `src/music.js`, market ambience (crowd, wind, far-off sizzle, wind chimes, rain)
   in `src/ambience.js`, sound effects in `src/audio.js`.
-- The story (`src/story.js`, `src/spirits.js`, written out in STORY.md).
+- The story, parts 1 and 2 (`src/story.js`, `src/spirits.js`, written out in
+  STORY.md).
 
 Rejected while sourcing: "64 16x16 food sprites" on OpenGameArt (uploaded by a third
 party from a paid itch.io pack, so the CC0 label is doubtful). No art from commercial

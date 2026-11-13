@@ -3,13 +3,13 @@
 // (debug). drawFrame() draws whichever screen is up and returns the registry
 // of hits, drag sources and drop targets for main.js.
 import { W, H, C, R, rbox, text, tw, mix, getCtx } from './gfx.js';
-import { LEVELS, STATIONS, UPGRADES, SHOP_FROM_LEVEL, RESET_TEXT } from './data.js';
+import { LEVELS, STATIONS, UPGRADES, SHOP_FROM_LEVEL, RESET_TEXT, ITEMS } from './data.js';
 import { isUnlocked, levelDef, canBuy } from './logic.js';
-import { drawItem, drawCustomer, drawShiba, drawPortrait, starIcon, lockIcon, coinIcon } from './sprites.js';
+import { drawItem, drawCustomer, drawShiba, drawPortrait, starIcon, lockIcon, coinIcon, heartIcon } from './sprites.js';
 import { SPIRITS, SPIRIT_IDS } from './spirits.js';
-import { SCENES, speakerName } from './story.js';
+import { SCENES, speakerName, afterSceneFor } from './story.js';
 import {
-  drawGame, drawMarket, drawRain, awningAndCounter, hud, tapMode, SCENE_H, COUNTER_Y,
+  drawGame, drawMarket, drawRain, awningAndCounter, hud, tapMode, SCENE_H, COUNTER_Y, lidArt, kettleArt,
 } from './render.js';
 import { drawParts } from './fx.js';
 import { resetRegistry, clearHits, hit, dim, panel, button, toggle, wrap } from './ui.js';
@@ -21,9 +21,23 @@ const woodFloor = (y0 = SCENE_H) => {
 export const shopOpen = (save) => (save.stars[SHOP_FROM_LEVEL] || 0) >= 1;
 
 // ---------- title ----------
+// Levels come in pages (part 1, part 2); PART tabs, a swipe or the arrow keys
+// switch. Each card shows the level, its title, what is new and its stars.
+export const TITLE_PAGES = [[1, 2, 3, 4, 5, 6], [7, 8, 9, 10, 11, 12, 13, 99]];
+export const titleCard = (k) => ({ x: 6 + (k % 2) * 86, y: SCENE_H + 21 + Math.floor(k / 2) * 41, w: 82, h: 38 });
+export function defaultTitlePage(stars) {
+  const top = Math.max(...LEVELS.filter((L) => isUnlocked(L.n, stars)).map((L) => L.n));
+  return Math.max(0, TITLE_PAGES.findIndex((pg) => pg.includes(top)));
+}
+export function levelTag(L) {
+  if (L.tag) return L.tag;
+  if (L.kind === 'mix') return 'MIX + SHOP';
+  if (L.kind === 'queue') return '3 GUESTS AT ONCE';
+  return `+ ${STATIONS[L.stations[L.stations.length - 1]].name.toUpperCase()}`;
+}
 function titleScreen(app) {
   const t = app.time;
-  drawMarket(t);
+  drawMarket(t, { festival: isUnlocked(13, app.save.stars) });
   drawCustomer('lantern', 52, COUNTER_Y + 2, { t });
   awningAndCounter(t, { react: 'wag' });
   rbox(84, 32, 92, 46, C.ink);
@@ -36,24 +50,40 @@ function titleScreen(app) {
   coinIcon(112, 87);
   text(String(app.save.wallet), 122, 88, { color: C.yellow });
   woodFloor();
-  text('PICK A NIGHT', 90, SCENE_H + 6, { font: 'big', align: 'center', color: C.cream });
-  LEVELS.forEach((L, i) => {
-    const x = 6 + (i % 2) * 86, y = SCENE_H + 18 + Math.floor(i / 2) * 54, w = 82, h = 50;
+  const page = app.titlePage || 0;
+  ['PART 1', 'PART 2'].forEach((lab, i) => {
+    const on = page === i;
+    button(6 + i * 86, SCENE_H + 3, 82, 14, lab, on ? C.redD : C.greyDD, () => app.setTitlePage(i), 'ui');
+    if (on) R(10 + i * 86, SCENE_H + 17, 74, 1, C.gold);
+  });
+  TITLE_PAGES[page].forEach((n, k) => {
+    const L = levelDef(n);
+    const { x, y, w, h } = titleCard(k);
     const open = isUnlocked(L.n, app.save.stars);
     rbox(x, y + 1, w, h, C.ink);
-    rbox(x, y, w, h, open ? C.cream : C.greyDD);
+    if (L.endless) { // endless nights: the best night so far
+      rbox(x, y, w, h, open ? C.night2 : C.greyDD, open ? C.gold : C.ink);
+      text('ENDLESS', x + 5, y + 5, { color: open ? C.gold : C.greyD, outline: null });
+      text(open ? 'NO LAST GUEST' : 'CLEAR LEVEL 13', x + 5, y + 14, { color: open ? C.cream : C.greyD, outline: null });
+      if (open) {
+        coinIcon(x + 5, y + 22);
+        text(app.save.endlessBest ? `BEST ${app.save.endlessBest}` : 'NO BEST YET', x + 15, y + 23, { color: C.yellow, outline: null });
+        hit(x, y, w, h, () => app.playLevel(L.n));
+      } else lockIcon(x + w - 14, y + 4, C.greyD);
+      return;
+    }
+    rbox(x, y, w, h, open ? (L.festival ? '#fbe9b8' : C.cream) : C.greyDD);
     text(`LEVEL ${L.n}`, x + 5, y + 5, { color: open ? C.redD : C.greyD, outline: null });
     text(L.title.toUpperCase(), x + 5, y + 14, { color: open ? C.ink : C.greyD, outline: null });
-    const tag = L.kind === 'mix' ? 'MIX + SHOP' : L.kind === 'queue' ? '3 GUESTS AT ONCE' : `+ ${STATIONS[L.stations[L.stations.length - 1]].name.toUpperCase()}`;
-    text(tag, x + 5, y + 23, { color: open ? C.greenD : C.greyD, outline: null });
+    text(levelTag(L), x + 5, y + 23, { color: open ? C.greenD : C.greyD, outline: null });
     if (open) {
-      const s = app.save.stars[L.n] || 0;
-      for (let k = 0; k < 3; k++) starIcon(x + 5 + k * 12, y + 34, k < s, 1);
-      if (L.rain) text('RAIN', x + w - 5, y + 37, { color: C.blue, outline: null, align: 'right' });
+      const st = app.save.stars[L.n] || 0;
+      for (let i = 0; i < 3; i++) starIcon(x + w - 35 + i * 10, y + 3, i < st, 1);
+      if (L.rain && !levelTag(L).includes('RAIN')) text('RAIN', x + w - 5, y + 31, { color: C.blue, outline: null, align: 'right' });
       hit(x, y, w, h, () => app.playLevel(L.n));
-    } else lockIcon(x + w - 14, y + 34, C.greyD);
+    } else lockIcon(x + w - 14, y + 4, C.greyD);
   });
-  const by = SCENE_H + 18 + 3 * 54 + 2;
+  const by = SCENE_H + 21 + 4 * 41;
   button(6, by, 82, 16, 'STORY', C.purple, () => app.openLog());
   if (shopOpen(app.save)) button(92, by, 82, 16, 'SHOP', C.greenD, () => app.openShop(null));
   else {
@@ -61,74 +91,100 @@ function titleScreen(app) {
     lockIcon(98, by + 3, C.greyD);
     text(`SHOP: LEVEL ${SHOP_FROM_LEVEL}`, 136, by + 6, { color: C.greyD, align: 'center' });
   }
-  text('ART: AROACHIFOUNDONMYPILLOW, KENNEY', 90, H - 20, { align: 'center', color: C.grey });
-  text('(CC0) AND CODE. SEE CREDITS.MD', 90, H - 12, { align: 'center', color: C.grey });
+  text('ART: AROACHIFOUNDONMYPILLOW, KENNEY', 90, H - 14, { align: 'center', color: C.grey });
+  text('(CC0) AND CODE. SEE CREDITS.MD', 90, H - 7, { align: 'center', color: C.grey });
 }
 
 // ---------- story scene ----------
 const TYPE_RATE = 45; // letters per second
 export function lineLength(d) { return d && d.cur ? d.cur.text.length : 0; }
 export function lineTyped(app) { return Math.floor(app.dlgT * TYPE_RATE) >= lineLength(app.dlg); }
-export const DLG = { x: 4, y: 164, w: 172, h: 180 };
+// The dialogue box sits under the street and fits the line on screen (it
+// eases between sizes); the answers show as buttons under it, on the floor.
+export const DLG = { x: 4, y: 164, w: 172 };
+const TEXT_W = DLG.w - 14;
+const HEAD_H = 46; // the portrait and name above a spirit's line
+export const dlgLineH = (step) => (!step ? 40 : (step.who === 'STORY' ? 8 : HEAD_H) + wrap(step.text, TEXT_W, 'big').length * 10 + 16);
+export const CHOICE_H = 18, CHOICE_GAP = 22;
+// Where answer k sits (the playtest taps these).
+export function choiceBox(d, k) {
+  return { x: DLG.x + 4, y: DLG.y + dlgLineH(d.cur) + 10 + k * CHOICE_GAP, w: DLG.w - 8, h: CHOICE_H };
+}
+// A speaker who is not a spirit (the cold voice in the night 13 epilogue).
+const VOICE = { VOICE: { name: '???', kind: 'A COLD VOICE' } };
 
 function sceneScreen(app) {
   const d = app.dlg, t = app.time, sc = d.scene;
   const def = levelDef(sc.level);
-  drawMarket(t, { rain: !!def?.rain });
-  drawCustomer(sc.spirit, 98, COUNTER_Y + 2, { t });
+  const frost = !!sc.frost && d.pc >= (sc.frostAt || 0);
+  drawMarket(t, { rain: !!def?.rain, festival: !!def?.festival && !sc.after, frost });
+  if (sc.spirit) drawCustomer(sc.spirit, 98, COUNTER_Y + 2, { t });
   if (def?.rain) drawRain(t);
-  awningAndCounter(t, { react: SPIRITS[sc.spirit]?.dog || null });
-  rbox(4, 18, 120, 13, C.ink);
+  awningAndCounter(t, { react: sc.dog || SPIRITS[sc.spirit]?.dog || null, frost });
+  rbox(4, 18, 122, 13, C.ink);
   text(`NIGHT ${sc.level}: ${sc.title.toUpperCase()}`, 8, 22, { color: C.gold });
   woodFloor();
   hit(0, 14, W, H - 14, () => app.dlgTap(), 'dialog');
   // the dialogue box
-  const B = DLG;
+  const want = dlgLineH(d.cur);
+  const B = { ...DLG, h: Math.round(app.dlgH && Math.abs(app.dlgH - want) > 0.5 ? app.dlgH : want) };
   rbox(B.x, B.y + 2, B.w, B.h, C.ink);
   rbox(B.x, B.y, B.w, B.h, C.cream);
   R(B.x + 2, B.y + 2, B.w - 4, B.h - 4, C.white);
   const who = d.cur ? d.cur.who : sc.spirit;
   let ty = B.y + 8;
   if (who !== 'STORY') {
-    rbox(B.x + 6, B.y + 6, 36, 36, C.night1);
-    drawPortrait(who, B.x + 8, B.y + 8, 2, t);
-    text(speakerName(who), B.x + 48, B.y + 10, { font: 'big', color: C.redD, outline: null });
-    if (SPIRITS[who]) text(SPIRITS[who].kind, B.x + 48, B.y + 21, { color: C.greyD, outline: null });
-    ty = B.y + 48;
+    rbox(B.x + 6, B.y + 6, 36, 36, VOICE[who] ? C.greyDD : C.night1);
+    if (VOICE[who]) drawVoice(B.x + 8, B.y + 8, t);
+    else drawPortrait(who, B.x + 8, B.y + 8, 2, t);
+    text(VOICE[who] ? VOICE[who].name : speakerName(who), B.x + 48, B.y + 10, { font: 'big', color: C.redD, outline: null });
+    const kind = VOICE[who] ? VOICE[who].kind : SPIRITS[who]?.kind;
+    if (kind) text(kind, B.x + 48, B.y + 21, { color: C.greyD, outline: null });
+    ty = B.y + HEAD_H;
   }
   if (d.cur) {
     const shown = d.cur.text.slice(0, Math.floor(app.dlgT * TYPE_RATE));
     // Wrap the whole line, then show only the typed part, so words don't jump.
-    const rows = wrap(d.cur.text, B.w - 14, 'big');
+    const rows = wrap(d.cur.text, TEXT_W, 'big');
     let left = shown.length;
     rows.forEach((r, i) => {
       const n = Math.max(0, Math.min(r.length, left));
       left -= r.length + 1;
       if (n > 0) text(r.slice(0, n), B.x + 7, ty + i * 10, { font: 'big', color: who === 'STORY' ? C.purple : C.ink, outline: null });
     });
-    ty += rows.length * 10 + 4;
   }
   if (d.choice && lineTyped(app)) {
+    text('YOUR ANSWER', B.x + 6, B.y + B.h + 3, { color: C.cream });
     d.choice.forEach((opt, k) => {
-      const y = Math.max(ty + 2, B.y + B.h - 6 - (d.choice.length - k) * 19);
-      button(B.x + 6, y, B.w - 12, 16, opt.text.toUpperCase(), C.blueD, () => app.dlgChoose(k), 'choice');
+      const c = choiceBox(d, k);
+      button(c.x, c.y, c.w, c.h, opt.text.toUpperCase(), C.blueD, () => app.dlgChoose(k), 'choice');
+      text(String(k + 1), c.x + 5, c.y + 6, { color: C.yellow });
     });
   } else if (lineTyped(app) && Math.floor(t * 2) % 2) {
     text('TAP', B.x + B.w - 22, B.y + B.h - 11, { color: C.greyD, outline: null });
     R(B.x + B.w - 10, B.y + B.h - 10, 5, 1, C.redD); R(B.x + B.w - 9, B.y + B.h - 9, 3, 1, C.redD); R(B.x + B.w - 8, B.y + B.h - 8, 1, 1, C.redD);
   }
   button(130, 18, 46, 14, d.replay ? 'CLOSE' : 'SKIP', C.steelD, () => app.dlgSkip(), 'skip');
-  if (!d.replay) text('CHOICES NEVER BLOCK. SKIP ANY TIME.', 90, DLG.y + DLG.h + 10, { align: 'center', color: C.grey });
+  if (!d.replay) text('CHOICES NEVER BLOCK. SKIP ANY TIME.', 90, H - 14, { align: 'center', color: C.grey });
+}
+// The cold voice: no face, only frost and two pale eyes.
+function drawVoice(x, y, t) {
+  for (let j = 0; j < 32; j += 2) for (let i = (j / 2) % 2; i < 32; i += 2) R(x + i, y + j, 1, 1, '#8fa4d8');
+  const blink = Math.sin(t * 0.7) > 0.95;
+  if (!blink) { R(x + 9, y + 13, 3, 2, C.white); R(x + 20, y + 13, 3, 2, C.white); }
 }
 
 // ---------- story log ----------
+export const LOG_PAGE = 6;
+export const logPages = () => Math.ceil(SCENES.length / LOG_PAGE);
 function logScreen(app) {
   const st = app.save.story;
   R(0, 0, W, H, C.night0);
   for (let y = 0; y < H; y += 4) R(0, y, W, 1, C.night1);
   text('STORY SO FAR', 90, 20, { font: 'big', align: 'center', color: C.gold });
   text('TAP A NIGHT TO READ IT AGAIN', 90, 31, { align: 'center', color: C.grey });
-  SCENES.forEach((sc, i) => {
+  const page = Math.min(app.logPage || 0, logPages() - 1);
+  SCENES.slice(page * LOG_PAGE, (page + 1) * LOG_PAGE).forEach((sc, i) => {
     const y = 42 + i * 44, x = 6, w = 168, h = 40;
     const seen = !!st.seen[sc.id];
     rbox(x, y + 1, w, h, C.ink);
@@ -140,14 +196,22 @@ function logScreen(app) {
       return;
     }
     rbox(x + 4, y + 4, 32, 32, C.night1);
-    drawPortrait(sc.spirit, x + 4, y + 4, 2, app.time);
     const sp = SPIRITS[sc.spirit];
-    text(`NIGHT ${sc.level}: ${sp.name}`, x + 42, y + 6, { color: C.redD, outline: null });
+    if (sp) drawPortrait(sc.spirit, x + 4, y + 4, 2, app.time);
+    else drawShiba(x + 20, y + 35, { t: app.time, react: 'growl' });
+    text(sc.after ? `AFTER NIGHT ${sc.level}` : `NIGHT ${sc.level}: ${sp.name}`, x + 42, y + 6, { color: C.redD, outline: null });
     text(sc.title.toUpperCase(), x + 42, y + 15, { color: C.ink, outline: null });
-    const got = st.memories[sc.spirit] || 0;
-    text(`MEMORIES ${got}/${sp.memories.length}`, x + 42, y + 26, { color: got ? C.purple : C.greyD, outline: null });
+    if (sp) {
+      const got = st.memories[sc.spirit] || 0;
+      text(`MEMORIES ${got}/${sp.memories.length}`, x + 42, y + 26, { color: got ? C.purple : C.greyD, outline: null });
+    } else text('TO BE CONTINUED', x + 42, y + 26, { color: C.purple, outline: null });
     hit(x, y, w, h, () => app.replayScene(sc.id));
   });
+  if (logPages() > 1) {
+    if (page > 0) button(6, 312, 38, 16, '<', C.blueD, () => app.setLogPage(page - 1), 'ui', 'big');
+    if (page < logPages() - 1) button(136, 312, 38, 16, '>', C.blueD, () => app.setLogPage(page + 1), 'ui', 'big');
+    text(`PAGE ${page + 1}/${logPages()}`, 90, 304, { align: 'center', color: C.grey });
+  }
   button(50, 312, 80, 16, 'BACK', C.steelD, () => app.toTitle());
   const flags = Object.keys(st.flags).length;
   text(flags ? `CHOICES MADE: ${flags}` : 'NO CHOICES MADE YET', 90, 336, { align: 'center', color: C.grey });
@@ -270,8 +334,46 @@ function resetConfirm(app) {
 // ---------- level intro card ----------
 function introPreview(app, g) {
   const t = app.time, def = g.def, it = def.intro;
-  if (def.kind === 'queue') {
-    ['moth', 'crane', 'fox'].forEach((l, i) => drawCustomer(l, 46 + i * 44, 146, { t, scale: 2 }));
+  if (def.endless) { // every station's dish, bobbing
+    ['soda', 'galbi', 'chicken', 'japchae', 'mandu', 'ramyeon'].forEach((id, i) => drawItem(id, 24 + (i % 3) * 46, 104 + Math.floor(i / 3) * 22 - Math.round(Math.abs(Math.sin(t * 2 + i)) * 3), { scale: 2 }));
+    return;
+  }
+  if (def.preview === 'treat') { // Chimaek, plain beef, hearts
+    drawShiba(70, 148, { t, react: 'wag', mood: Math.floor(t) % 2 ? 'happy' : 'wait' });
+    drawItem('plain', 96, 116, { scale: 2 });
+    for (let i = 0; i < 3; i++) heartIcon(52 + i * 12, 108 - Math.round(((t * 0.8 + i * 0.3) % 1) * 6), C.red);
+    return;
+  }
+  if (def.preview === 'special') { // the specials board and the double-pay dish
+    rbox(36, 108, 108, 12, '#2c4a34', C.ink);
+    text('SPECIAL RAMYEON X2', 90, 111, { color: C.cream, align: 'center', outline: null });
+    drawItem('ramyeon', 74, 122 - Math.round(Math.abs(Math.sin(t * 3)) * 3), { scale: 2, sauce: 'egg' });
+    text('X2', 106, 140, { font: 'big', color: C.yellow });
+    return;
+  }
+  if (def.kind === 'festival') {
+    for (let i = 0; i < 6; i++) { const x = 30 + i * 24; R(x, 104, 6, 8, C.red); R(x + 1, 105, 4, 1, C.gold); R(x + 1, 110, 4, 1, C.gold); }
+    ['lantern', 'rabbit', 'fox'].forEach((l, i) => drawCustomer(l, 46 + i * 44, 146, { t, scale: 2 }));
+    rbox(78, 108, 24, 9, C.gold); text('VIP', 90, 110, { color: C.ink, outline: null, align: 'center' });
+    return;
+  }
+  if (def.kind === 'queue' || (def.kind === 'mix' && def.queue > 1)) {
+    const cast = def.kind === 'queue' ? ['moth', 'crane', 'fox'] : [def.guest || 'wisp', def.n >= 10 ? 'clay' : 'wisp', 'moss'];
+    cast.forEach((l, i) => drawCustomer(l, 46 + i * 44, 146, { t, scale: 2 }));
+    return;
+  }
+  if (it.station === 'steamer') {
+    const hop = Math.round(Math.abs(Math.sin(t * 2)) * 4);
+    drawItem('mandu', 24, 116, { scale: 2, sauce: 'soydip' }); drawItem('bun', 124, 116, { scale: 2 });
+    lidArt(58, 120 - hop, 62);
+    R(64, 130, 52, 12, C.ink); R(65, 131, 50, 10, '#c9a46a');
+    for (let i = 0; i < 4; i++) { const k = (t * 0.8 + i * 0.25) % 1; R(70 + i * 12, 116 - hop - Math.round(k * 12), 2, 2, mix('#d8d8e8', C.woodDD, k)); }
+    return;
+  }
+  if (it.station === 'pot') {
+    drawItem('ramyeon_raw', 30, 114, { scale: 2 }); drawItem('ramyeon', 112, 114, { scale: 2, sauce: 'egg' });
+    kettleArt(76, 118);
+    for (let i = 0; i < 5; i++) R(70 + ((i * 13 + Math.floor(t * 8) * 5) % 40), 146 - (Math.floor(t * 6 + i) % 3), 2, 2, C.white);
     return;
   }
   if (def.kind === 'mix') {
@@ -297,12 +399,12 @@ function introCard(app) {
   dim();
   const lines = it[tapMode(app) ? 'tap' : 'drag'];
   const rowsAll = lines.map((l) => wrap(l.toUpperCase(), 136));
-  const ph = 132 + rowsAll.reduce((a, r) => a + r.length * 8 + 4, 0) + 26;
+  const ph = 137 + rowsAll.reduce((a, r) => a + r.length * 8 + 4, 0);
   const oy = Math.round((H - ph) / 2) - 70;
   panel(10, 70 + oy, 160, ph);
-  text(`LEVEL ${g.level}`, 90, 78 + oy, { align: 'center', color: C.redD, outline: null });
+  text(g.endless ? 'NO STARS, NO LAST GUEST' : `LEVEL ${g.level}`, 90, 78 + oy, { align: 'center', color: C.redD, outline: null });
   text(g.def.title.toUpperCase(), 90, 86 + oy, { font: 'big', align: 'center', color: C.ink, outline: null });
-  rbox(20, 100 + oy, 140, 70, g.def.rain ? C.night1 : C.woodDD);
+  rbox(20, 100 + oy, 140, 70, g.def.rain || g.def.festival ? C.night1 : C.woodDD);
   if (g.def.rain) for (let i = 0; i < 18; i++) R(24 + ((i * 37) % 132), 102 + oy + ((i * 23 + Math.floor(t * 60)) % 60), 1, 3, '#5f74b0');
   withOffset(oy, () => introPreview(app, g)); // drawn at its own y, moved with the card
   text(it.heading, 90, 156 + oy, { align: 'center', color: C.gold });
@@ -324,10 +426,48 @@ function withOffset(dy, fn) {
 }
 
 // ---------- end of the night ----------
+export function nextNote(next) {
+  if (next.kind === 'station') return `NEXT UP: THE ${STATIONS[next.stations[next.stations.length - 1]].name.toUpperCase()}`;
+  if (next.kind === 'festival') return 'NEXT UP: THE LANTERN FESTIVAL';
+  if (next.kind === 'queue') return 'NEXT UP: A LONG LINE';
+  return next.queue > 1 ? 'NEXT UP: A BUSY LINE' : 'NEXT UP: EVERY STATION AT ONCE';
+}
+// Endless nights end with a score instead of stars.
+function endlessEnd(app) {
+  const g = app.g;
+  panel(12, 52, 156, 272);
+  text('NIGHT OVER', 90, 62, { font: 'big', align: 'center', color: C.redD, outline: null });
+  text('ENDLESS NIGHTS', 90, 74, { align: 'center', color: C.greyD, outline: null });
+  const best = app.newBest;
+  rbox(40, 86, 100, 34, best ? C.gold : C.cream);
+  coinIcon(52, 99);
+  text(String(g.coins), 98, 97, { font: 'big', scale: 2, align: 'center', color: C.ink, outline: null });
+  if (best) text('NEW BEST!', 90, 124, { align: 'center', color: C.greenD, outline: null });
+  const mixups = g.results.filter((r) => !r.walked && r.mood !== 'happy').length;
+  const rows = [
+    ['GUESTS SERVED', String(g.served)],
+    ['HAPPY', String(g.served - mixups)],
+    ['WALKED OUT', `${g.lost} / ${g.def.strikes}`],
+    ['TONIGHT SPECIAL', ITEMS[g.special].short],
+    ['BEST NIGHT', String(app.save.endlessBest)],
+    ['PURSE', `+${app.lastPay || 0} = ${app.save.wallet}`],
+  ];
+  rows.forEach(([a, b], i) => {
+    const y = 136 + i * 11;
+    text(a, 26, y, { color: C.ink, outline: null });
+    text(b, 154, y, { color: C.ink, outline: null, align: 'right' });
+    R(26, y + 8, 128, 1, C.cream);
+  });
+  drawShiba(90, 270, { big: true, scale: 3, mood: best ? 'happy' : 'wait', t: app.time });
+  button(22, 280, 64, 18, 'AGAIN', C.blueD, () => app.newLevel(g.level));
+  button(94, 280, 64, 18, 'MENU', C.greenD, () => app.toTitle());
+  text('EVERY NIGHT IS DIFFERENT', 90, 304, { align: 'center', color: C.greyD, outline: null });
+}
 function endScreen(app) {
   const g = app.g, t = app.time - (app.endAt || 0);
   clearHits();
   dim();
+  if (g.endless) return endlessEnd(app);
   panel(12, 52, 156, 272);
   const ok = g.stars > 0;
   text(ok ? 'STALL CLOSED!' : 'TOUGH NIGHT...', 90, 62, { font: 'big', align: 'center', color: ok ? C.greenD : C.redD, outline: null });
@@ -354,21 +494,26 @@ function endScreen(app) {
     R(26, y + 8, 128, 1, C.cream);
   });
   const mem = [...(app.nightMemories || [])];
+  const memRows = mem.length ? wrap(mem.map((id) => SPIRITS[id].name).join(', '), 140) : [];
   if (mem.length) {
     text('NEW MEMORIES', 90, 205, { align: 'center', color: C.purple, outline: null });
-    text(mem.map((id) => SPIRITS[id].name).join(', '), 90, 213, { align: 'center', color: C.ink, outline: null });
+    memRows.slice(0, 2).forEach((r, i) => text(r, 90, 213 + i * 8, { align: 'center', color: C.ink, outline: null }));
   }
-  drawShiba(90, 270, { big: true, scale: 3, mood: ok ? 'happy' : 'wait', t: app.time });
+  drawShiba(90, 270, { big: true, scale: memRows.length > 1 ? 2 : 3, mood: ok ? 'happy' : 'wait', t: app.time });
   const next = levelDef(g.level + 1);
   const shopNext = ok && g.level >= SHOP_FROM_LEVEL;
+  const after = afterSceneFor(g.level);
+  const epilogue = ok && after && !app.save.story.seen[after.id];
   button(22, 280, 64, 18, 'RETRY', C.blueD, () => app.newLevel(g.level));
-  if (ok && next) button(94, 280, 64, 18, shopNext ? 'SHOP' : 'NEXT', C.greenD, () => app.endNext());
+  if (epilogue) button(94, 280, 64, 18, 'GO ON', Math.floor(app.time * 2) % 2 ? C.purple : C.redD, () => app.playAfter(after));
+  else if (ok && next) button(94, 280, 64, 18, shopNext ? 'SHOP' : 'NEXT', C.greenD, () => app.endNext());
   else if (shopNext) button(94, 280, 64, 18, 'SHOP', C.greenD, () => app.openShop(null));
   else button(94, 280, 64, 18, 'MENU', ok ? C.greenD : C.steelD, () => app.toTitle());
   let note = 'NEED 1 STAR TO OPEN THE NEXT LEVEL';
   if (ok && next && shopNext) note = `UPGRADES, THEN LEVEL ${next.n}`;
-  else if (ok && next) note = next.kind === 'station' ? `NEXT UP: THE ${STATIONS[next.stations[next.stations.length - 1]].name.toUpperCase()}` : next.kind === 'mix' ? 'NEXT UP: EVERY STATION AT ONCE' : 'NEXT UP: A LONG LINE';
-  else if (ok) note = 'MORE NIGHTS COMING IN PART 2';
+  else if (ok && next) note = nextNote(next);
+  else if (epilogue) note = 'THE BELL IS RINGING AGAIN...';
+  else if (ok) note = 'MORE NIGHTS COMING IN PART 3';
   text(note, 90, 304, { align: 'center', color: ok ? C.redD : C.greyD, outline: null });
 }
 
@@ -378,9 +523,9 @@ function castScreen(app) {
   const t = app.time;
   const cast = [...SPIRIT_IDS, 'shiba', 0, 3];
   cast.forEach((look, i) => {
-    const cx = 46 + (i % 2) * 88, y = 70 + Math.floor(i / 2) * 64;
-    R(cx - 40, y - 52, 80, 62, i % 4 === 0 || i % 4 === 3 ? C.night1 : C.night3);
-    drawCustomer(look, cx, y, { t, scale: 3 });
+    const cx = 31 + (i % 3) * 59, y = 62 + Math.floor(i / 3) * 62;
+    R(cx - 28, y - 46, 56, 56, (i + Math.floor(i / 3)) % 2 ? C.night1 : C.night3);
+    drawCustomer(look, cx, y, { t, scale: 2 });
     const name = SPIRITS[look] ? SPIRITS[look].name : look === 'shiba' ? 'CHIMAEK' : 'PERSON';
     text(name, cx, y + 1, { align: 'center', color: C.gold });
   });

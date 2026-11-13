@@ -65,6 +65,11 @@ export function itemImage(id, opts = {}) {
     const t = cookTint(p, COOK.grill, 'raw');
     return t.mode ? tinted('galbi', t.mode, t.mode === 'raw' ? t.a * 0.6 : t.a) : img('galbi');
   }
+  if (id === 'plain') {
+    if (p < 0.45) return img('plain_raw');
+    const t = cookTint(p, COOK.grill, 'raw');
+    return t.mode ? tinted('plain', t.mode, t.mode === 'raw' ? t.a * 0.6 : t.a) : img('plain');
+  }
   if (id === 'sausage') {
     const t = cookTint(p, COOK.grill, 'raw');
     return t.mode ? tinted('sausage', t.mode, t.a) : img('sausage');
@@ -80,6 +85,16 @@ export function itemImage(id, opts = {}) {
     if (scorch > 0.05) return tinted(id, 'burnt', Math.min(0.85, 0.15 + scorch * 0.7));
     if (opts.raw || p < 0.3) return img(ITEMS[id].raw);
     if (p < COOK.wok.perfectLo) return tinted(id, 'pale', (1 - p / COOK.wok.perfectLo) * 0.9);
+    return img(id);
+  }
+  const kind = ITEMS[id]?.kind;
+  if (kind === 'steam' || kind === 'pot') {
+    // Raw dough or the noodle block, then the dish, pale until it is done;
+    // left too long it goes soggy (grey and swollen-looking).
+    const spec = COOK[kind];
+    if (opts.raw || p < 0.3) return img(ITEMS[id].raw);
+    if (p < spec.perfectLo) return tinted(id, 'pale', (1 - p / spec.perfectLo) * 0.9);
+    if (p > spec.perfectHi) return tinted(id, 'soggy', Math.min(0.8, 0.15 + ((p - spec.perfectHi) / (spec.burnt - spec.perfectHi)) * 0.6));
     return img(id);
   }
   return img(id);
@@ -187,6 +202,11 @@ export function drawCustomer(look, cx, y, { mood = 'wait', t = 0, low = false, s
   if (typeof look === 'string' && SPIRIT_ART[look]) {
     const a = SPIRIT_ART[look];
     if (look === 'lantern' || look === 'moth' || look === 'crane' || look === 'wisp') top -= Math.round((Math.sin(t * 2.2 + cx) * 0.5 + 0.5) * 2) * s / 2 + s; // floating
+    if (look === 'rabbit' && mood === 'wait') top -= Math.abs(Math.round(Math.sin(t * 3 + cx))) * s; // a small hop now and then
+    if (look === 'clay') { // its steam ears puff
+      const k = Math.floor(t * 2 + cx) % 3;
+      if (k === 0) { R(x + 1 * s, top - s, s, s, '#d8d8e8'); R(x + 14 * s, top - s, s, s, '#d8d8e8'); }
+    }
     if (look === 'lantern') { // warm glow behind the paper
       const k = Math.sin(t * 3) * 0.5 + 0.5;
       R(x + 2 * s, top + 3 * s, 12 * s, 9 * s, mix('#3a2a40', '#7a5a40', k * 0.6));
@@ -263,13 +283,24 @@ function shibaCanvas(happy) {
   return cv;
 }
 // react: 'wag' (fast wag, happy face), 'growl' (brows, GRR, a little shake),
-// 'hide' (ducks behind the counter: only ears and eyes show), 'stare'.
+// 'hide' (ducks behind the counter: only ears and eyes show), 'stare',
+// 'turn' (turns her back: she sniffed a treat and said no).
 export function drawShiba(cx, y, { big = false, mood = 'wait', t = 0, scale = 2, react = null } = {}) {
   const s = big ? Math.max(scale, 2) : scale;
   const hop = mood === 'happy' ? Math.abs(Math.round(Math.sin(t * 10) * 2)) * s / 2 : 0;
   let x = Math.round(cx - 8 * s);
   const top = Math.round(y - 16 * s - hop);
   const ctx = getCtx();
+  if (react === 'turn') { // her back to you: orange fur where the face was, the curled tail on top
+    const tilt = Math.round(Math.sin(t * 12)) > 0 ? 1 : 0; // a small huffy shake
+    ctx.drawImage(shibaCanvas(false), x + tilt, top, 16 * s, 16 * s);
+    const P = (px, py, w, h, c) => R(x + tilt + px * s, top + py * s, w * s, h * s, c);
+    P(2, 4, 12, 6, SHIBA_PAL.o); P(1, 5, 1, 4, SHIBA_PAL.o); P(14, 5, 1, 4, SHIBA_PAL.o);
+    P(3, 9, 10, 1, '#c86e2a');
+    P(3, 11, 10, 4, SHIBA_PAL.o);
+    P(5, 11, 6, 3, SHIBA_PAL.w); P(6, 12, 4, 1, SHIBA_PAL.o); P(7, 12, 1, 1, SHIBA_PAL.w); // the curled tail
+    return;
+  }
   if (react === 'hide') { // peeking over the edge: the top 6 rows, sunk down
     const peek = 6 - (Math.sin(t * 1.5) > 0.6 ? 1 : 0);
     ctx.drawImage(shibaCanvas(false), 0, 0, 16, peek, x, Math.round(y - peek * s), 16 * s, peek * s);

@@ -167,6 +167,52 @@ export const SPIRIT_ART = {
       '................',
     ]],
   },
+  // Clay pot imp (level 10): a squat earthenware pot (ttukbaegi) with its lid
+  // for a hat, two puffs of steam for ears and a permanent frown.
+  clay: {
+    pal: { k: OL, c: '#a85a3a', C: '#6e3424', l: '#d08a62', K: '#3a2229', e: '#fee761', w: '#f2f4fa', m: '#3a1a14' },
+    frames: [[
+      '..w..........w..',
+      '.w.....kk.....w.',
+      '..w...kCCk...w..',
+      '...kkkkkkkkkk...',
+      '..kllllllllCCk..',
+      '..kkkkkkkkkkkk..',
+      '.kcccccccccccCk.',
+      'kcckkccccckkcCCk',
+      'kclceecccceeccCk',
+      'kclccccccccccCCk',
+      'kclcccmmmmcccCCk',
+      '.kcccccccccccCk.',
+      '.kCcccccccccCCk.',
+      '..kCCCCCCCCCCk..',
+      '..k.k......k.k..',
+      '................',
+    ]],
+  },
+  // Moon rabbit (level 13, the festival's guest of honour): long ears, a gold
+  // crescent on the forehead, a red festival vest with gold trim.
+  rabbit: {
+    pal: { k: OL, w: '#fbf6ea', s: '#d9cfe8', p: '#f2a0a0', y: '#fee761', e: '#d8333f', r: '#d8333f', R: '#9e2835', g: '#feae34' },
+    frames: [[
+      '...kk.....kk....',
+      '..kwpk...kwpk...',
+      '..kwpk...kwpk...',
+      '..kwpk...kwpk...',
+      '..kwwk...kwwk...',
+      '..kkwkkkkkwkk...',
+      '.kwwwwwyywwwsk..',
+      'kwwwwwwwywwwwsk.',
+      'kwwewwwwwwewwsk.',
+      'kpwwwwwkwwwwpsk.',
+      '.kwwwwkwkwwwsk..',
+      '.kkrrgrrrrgrRk..',
+      'kwkrrrrggrrrRkwk',
+      'kwkrrrrrrrrrRkwk',
+      '.kkrrrrrrrrrRkk.',
+      '..kkkkkkkkkkkk..',
+    ]],
+  },
 };
 
 // ---------- wok dishes (no CC0 sprite for these) ----------
@@ -283,6 +329,176 @@ export const FOOD_ART = {
     ],
   },
 };
+
+// ---------- part 2: steamer, noodle pot, dips (no CC0 sprite for these) ----------
+Object.assign(FOOD_ART, {
+  // Raw mandu: two pleated dumplings, matte dough with a dusting of flour.
+  mandu_raw: {
+    pal: { k: OL, w: '#efe8da', s: '#cfc4ae', p: '#b8ad96', f: '#ffffff' },
+    rows: [
+      '................', '................', '................', '................',
+      '..k.k.....k.k...',
+      '.kpkpk...kpkpk..',
+      'kwpwpwk.kwpwpwk.',
+      'kfwwwfsk.kfwwwsk',
+      'kwwwwwsk.kwwfwsk',
+      'kswfwssk.kswwssk',
+      '.kssssk...kssk..',
+      '..kkkk.....kk...',
+      '................', '................', '................', '................',
+    ],
+  },
+  // Steamed mandu: glossy, a little see-through, a hint of filling inside.
+  mandu: {
+    pal: { k: OL, w: '#fbf3dc', s: '#e3cfa2', p: '#d6bc8a', h: '#ffffff', f: '#e8a08a' },
+    rows: [
+      '................', '................', '................', '................',
+      '..k.k.....k.k...',
+      '.kpkpk...kpkpk..',
+      'kwpwpwk.kwpwpwk.',
+      'khwwwwsk.khwwwsk',
+      'kwwffwsk.kwffwsk',
+      'kswwwssk.kswwssk',
+      '.kssssk...kssk..',
+      '..kkkk.....kk...',
+      '................', '................', '................', '................',
+    ],
+  },
+  // Raw bun: a flat round of dough.
+  bun_raw: {
+    pal: { k: OL, w: '#efe8da', s: '#cfc4ae', f: '#ffffff' },
+    rows: [
+      '................', '................', '................', '................',
+      '................', '................',
+      '....kkkkkkkk....',
+      '..kkfwwwwwwwkk..',
+      '.kfwwwwfwwwwwsk.',
+      'kwwwwwwwwwwwwssk',
+      'kswwwfwwwwwwsssk',
+      '.kksssssssssskk.',
+      '...kkkkkkkkkk...',
+      '................', '................', '................',
+    ],
+  },
+  // Steamed bun (jjinppang): puffed up, glossy, a red stamp on top.
+  bun: {
+    pal: { k: OL, w: '#fbf3dc', s: '#e3cfa2', h: '#ffffff', r: '#d8333f' },
+    rows: [
+      '................', '................', '................', '................',
+      '.....kkkkkk.....',
+      '...kkhhwwwwkk...',
+      '..khhwwwwwwwsk..',
+      '.khwwwwrrwwwwsk.',
+      '.kwwwwwrrwwwwsk.',
+      'kwwwwwwwwwwwwssk',
+      'kwwwwwwwwwwwsssk',
+      '.kswwwwwwwwsssk.',
+      '..kksssssssskk..',
+      '....kkkkkkkk....',
+      '................', '................',
+    ],
+  },
+  // Raw ramyeon: a block of instant noodles.
+  ramyeon_raw: {
+    pal: { k: OL, y: '#f2c45a', h: '#ffe08a', d: '#c8902a' },
+    rows: [
+      '................', '................', '................',
+      '..kkkkkkkkkkkk..',
+      '.kyhyhyhyhyhyyk.',
+      '.khyyhyyhyyhydk.',
+      '.kyhyhyyhyhyydk.',
+      '.kyyhyyhyyhyydk.',
+      '.khyhyhyhyhyydk.',
+      '.kyyhyyhyyhydyk.',
+      '.kyhyyhyhyyhydk.',
+      '.kddddddddddddk.',
+      '..kkkkkkkkkkkk..',
+      '................', '................', '................',
+    ],
+  },
+  // Ramyeon: a white bowl with a blue rim, red broth and springy noodles.
+  ramyeon: {
+    pal: { k: OL, r: '#d8333f', o: '#f77622', y: '#f6d06a', w: '#fbf6ea', s: '#d9cfc0', b: '#3a6ab0' },
+    rows: [
+      '................', '................', '................',
+      '..kkkkkkkkkkkk..',
+      '.krryyorryyorrk.',
+      'krryoyyrryoyyrrk',
+      'kryyrryyoyyrryrk',
+      'kkkkkkkkkkkkkkkk',
+      'kwwwwwwwwwwwwwsk',
+      '.kwbwwbwwbwwbsk.',
+      '.kwwwwwwwwwwwsk.',
+      '..kwwwwwwwwwsk..',
+      '...kssssssssk...',
+      '....kkkkkkkk....',
+      '................', '................',
+    ],
+  },
+  // Dips for mandu: a small dish of soy with sesame, and one of chili oil.
+  soydip: {
+    pal: { k: OL, b: '#4a2a1a', h: '#8a5a32', e: '#f4e3c3', w: '#fbf6ea', s: '#d9cfc0' },
+    rows: [
+      '................', '................', '................', '................', '................',
+      '....kkkkkkkk....',
+      '..kkbbbbbbbbkk..',
+      '.kwbhhbebbbebwk.',
+      '.kwbbebbbebbbwk.',
+      '.kwwbbbbbbbbwwk.',
+      '..kwwwwwwwwwwk..',
+      '...kswwwwwwsk...',
+      '....kkkkkkkk....',
+      '................', '................', '................',
+    ],
+  },
+  chilioil: {
+    pal: { k: OL, b: '#c8361e', h: '#f77622', e: '#5a1a10', w: '#fbf6ea', s: '#d9cfc0' },
+    rows: [
+      '................', '................', '................', '................', '................',
+      '....kkkkkkkk....',
+      '..kkbbbbbbbbkk..',
+      '.kwbhhbebbbebwk.',
+      '.kwbbebbbebbbwk.',
+      '.kwwbbbbbbbbwwk.',
+      '..kwwwwwwwwwwk..',
+      '...kswwwwwwsk...',
+      '....kkkkkkkk....',
+      '................', '................', '................',
+    ],
+  },
+});
+
+// Chimaek's treat: a slab of plain beef (no marinade), raw and grilled.
+Object.assign(FOOD_ART, {
+  plain_raw: {
+    pal: { k: OL, r: '#d8475a', R: '#a8323f', w: '#f4d0d0' },
+    rows: [
+      '................', '................', '................', '................', '................',
+      '....kkkkkkkk....',
+      '..kkrrwrrrrrkk..',
+      '.krrrrrwrrrrrRk.',
+      '.krrrrrrwrrrrRk.',
+      '.kRrrrrrrrrrRRk.',
+      '.kRRRRRRRRRRRRk.',
+      '..kkkkkkkkkkkk..',
+      '................', '................', '................', '................',
+    ],
+  },
+  plain: {
+    pal: { k: OL, r: '#a8683e', R: '#6e3a22', h: '#c88a5a', g: '#3a2229' },
+    rows: [
+      '................', '................', '................', '................', '................',
+      '....kkkkkkkk....',
+      '..kkhhhrrrrrkk..',
+      '.khrgrrgrrgrrRk.',
+      '.krrrgrrgrrgrRk.',
+      '.kRrrrrrrrrrRRk.',
+      '.kRRRRRRRRRRRRk.',
+      '..kkkkkkkkkkkk..',
+      '................', '................', '................', '................',
+    ],
+  },
+});
 
 // Every map is 16 x 16 (tests check this) except the fox's mask overlay.
 export function mapRows(rows) { return rows.map((r) => r.padEnd(16, '.').slice(0, 16)); }

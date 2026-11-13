@@ -140,6 +140,15 @@ const SOUNDS = {
   win: () => { [523, 659, 784, 1047, 784, 1047].forEach((f, i) => tone(f, i === 5 ? 0.35 : 0.1, { type: 'square', vol: 0.07, at: i * 0.11 })); },
   lose: () => { [392, 370, 349, 330].forEach((f, i) => tone(f, 0.2, { type: 'triangle', vol: 0.08, at: i * 0.18 })); },
   star: () => { tone(1047, 0.06, { vol: 0.07 }); tone(1568, 0.15, { vol: 0.07, at: 0.06 }); },
+  // Part 2: the steamer's bamboo lid, a hiss of steam, the kettle, the boil, noodles going in.
+  lid: () => { tone(240, 0.05, { type: 'triangle', vol: 0.09, to: 180 }); noise(0.04, { f: 1400, vol: 0.06 }); },
+  steam: () => noise(0.45, { type: 'highpass', f: 5000, to: 2500, vol: 0.1, attack: 0.03 }),
+  pour: () => { noise(0.5, { type: 'bandpass', f: 900, to: 1600, q: 2, vol: 0.12, attack: 0.04 }); },
+  boil: () => { for (let i = 0; i < 5; i++) tone(260 + i * 60, 0.05, { type: 'sine', vol: 0.05, to: 520 + i * 40, at: i * 0.06 }); },
+  // Chimaek: a happy yip, and a sniff when she says no.
+  yip: () => { tone(880, 0.07, { type: 'triangle', vol: 0.1, to: 1320 }); tone(1100, 0.09, { type: 'triangle', vol: 0.09, to: 1560, at: 0.12 }); },
+  sniff: () => { noise(0.06, { type: 'bandpass', f: 2500, q: 3, vol: 0.08 }); noise(0.06, { type: 'bandpass', f: 2800, q: 3, vol: 0.08, at: 0.1 }); },
+  plop: () => { tone(420, 0.08, { type: 'sine', vol: 0.09, to: 160 }); noise(0.12, { type: 'lowpass', f: 700, vol: 0.08, at: 0.03 }); },
 };
 
 // Frequent ambient cooking sounds don't duck the music (it would pump).

@@ -8,8 +8,8 @@
 //   tap             the older tap-to-apply controls with FLIP / TAKE / TOSS /
 //                   LIFT / SERVE buttons (the "Tap controls" setting)
 import { W, H, C, R, rbox, text, tw, mix } from './gfx.js';
-import { ITEMS, SAUCES, STATIONS, STATION_SAUCES, WOK_ITEMS } from './data.js';
-import { grillState, fryState, wokState, scoreServe, canSauce } from './logic.js';
+import { ITEMS, SAUCES, STATIONS, STATION_SAUCES, WOK_ITEMS, STEAM_ITEMS, TREAT } from './data.js';
+import { grillState, fryState, wokState, steamState, potState, potBoiling, scoreServe, canSauce } from './logic.js';
 import {
   drawItem, drawSauce, coinIcon, lockIcon, speakerIcon, gearIcon, heartIcon, drawCustomer, drawShiba,
 } from './sprites.js';
@@ -65,7 +65,17 @@ function lantern(x, y, t) {
   R(x + 2, y + 11, 3, 2, C.gold);
 }
 
-// The street behind the stall. `opts.rain` darkens the sky and hides the stars.
+// Snow for the frost at the end of night 13.
+function drawSnow(t) {
+  for (let i = 0; i < 40; i++) {
+    const sx = (i * 47 + 11) % W;
+    const y = ((t * (12 + (i % 4) * 5) + i * 37) % (SCENE_H + 10)) - 5;
+    const x = Math.round(sx + Math.sin(t * 1.5 + i) * 3);
+    R(x, Math.round(y), 1, 1, i % 3 ? '#dfe8f8' : C.white);
+  }
+}
+// The street behind the stall. `opts.rain` darkens the sky and hides the stars;
+// `opts.festival` hangs more lanterns under a full moon; `opts.frost` brings snow.
 export function drawMarket(t, opts = {}) {
   R(0, 0, W, SCENE_H, C.night0);
   const bands = [[44, C.night1], [70, C.night2], [96, C.night3]];
@@ -103,6 +113,16 @@ export function drawMarket(t, opts = {}) {
   strand(t, 30, 16, 0);
   lantern(40, 50, t); lantern(120, 52, t);
   strand(t, 22, 8, 4);
+  if (opts.festival) {
+    R(140, 30, 15, 15, C.night1); R(141, 29, 13, 17, C.night1); // a full moon
+    R(141, 31, 13, 13, C.cream); R(142, 30, 11, 15, C.cream); R(146, 34, 3, 2, mix(C.cream, C.grey, 0.4)); R(144, 39, 2, 2, mix(C.cream, C.grey, 0.4));
+    strand(t, 40, 12, 2);
+    for (const [x, y] of [[14, 62], [66, 64], [96, 60], [150, 62]]) lantern(x, y, t + x);
+  }
+  if (opts.frost) {
+    drawSnow(t);
+    for (let x = 0; x < W; x += 3) R(x, 125 + ((x * 7) % 3), 2, 1, '#dfe8f8'); // frost on the far stalls
+  }
 }
 
 // Rain streaks over the street (level 4).
@@ -131,9 +151,51 @@ export function awningAndCounter(t, dogOpts = {}) {
   R(0, COUNTER_Y + 6, W, SCENE_H - COUNTER_Y - 6, C.wood);
   for (let x = 8; x < W; x += 22) R(x, COUNTER_Y + 7, 1, SCENE_H - COUNTER_Y - 7, C.woodD);
   R(0, SCENE_H - 1, W, 1, C.ink);
-  rbox(132, COUNTER_Y - 9, 32, 10, C.ink, C.ink);
-  text('CHIMAEK', 148, COUNTER_Y - 7, { color: C.gold, align: 'center', outline: null });
-  if (!dogOpts.none) drawShiba(20, COUNTER_Y + 2, { t, react: dogOpts.react || null });
+  // The stall's sign hangs on the front of the counter, below the guests (on a
+  // queue night the third guest stands where it used to be).
+  rbox(130, COUNTER_Y + 7, 36, 10, C.ink, C.woodDD);
+  text('CHIMAEK', 148, COUNTER_Y + 9, { color: C.gold, align: 'center', outline: null });
+  if (dogOpts.special) { // the specials board on the counter front
+    const str = `SPECIAL ${ITEMS[dogOpts.special].short} X2`;
+    const w = tw(str) + 8;
+    rbox(46, COUNTER_Y + 7, w, 10, '#2c4a34', C.woodDD);
+    text(str, 46 + w / 2, COUNTER_Y + 9, { color: C.cream, align: 'center', outline: null });
+  }
+  if (dogOpts.frost) for (let x = 1; x < W; x += 2) R(x, COUNTER_Y + ((x * 5) % 3 === 0 ? 1 : 0), 1, 1, '#eaf2ff'); // frost on the counter
+  if (!dogOpts.none) drawShiba(20, COUNTER_Y + 2, { t, react: dogOpts.react || null, mood: dogOpts.mood || 'wait' });
+}
+
+// Chimaek and her treat (level 9 on): a thought bubble with plain beef when
+// she is hungry, hearts when she eats, her back turned when she says no, and
+// a small timer while tips are worth more. Returns how to draw her.
+export const DOG_BOX = { x: 2, y: COUNTER_Y - 34, w: 36, h: 36 };
+export function dogLook(g, t) {
+  const d = g.dog;
+  if (!d) return { react: g.phase === 'play' ? dogReact(g) : null };
+  if (g.time - d.ateT < 1.6) return { react: 'wag', mood: 'happy' };
+  if (g.time - d.refuseT < 1.4) return { react: 'turn' };
+  return { react: g.phase === 'play' ? dogReact(g) || (d.want ? 'wag' : null) : null };
+}
+function dogExtras(app) {
+  const g = app.g, d = g.dog, t = app.time;
+  if (!d || g.phase !== 'play') return;
+  if (d.want) { // thought bubble: plain beef
+    const bob = Math.round(Math.sin(t * 3));
+    R(30, 103 + bob, 2, 2, C.white); R(34, 99 + bob, 3, 3, C.white);
+    rbox(30, 78 + bob, 24, 20, C.white);
+    drawItem('plain', 34, 78 + bob);
+    const k = Math.max(0, (d.until - g.time) / TREAT.wait); // how long she will wait
+    R(33, 94 + bob, Math.round(18 * k), 2, k > 0.3 ? C.gold : C.red);
+  }
+  const ate = g.time - d.ateT;
+  if (ate < 1.6) for (let i = 0; i < 3; i++) heartIcon(8 + i * 10, 96 - Math.round(ate * 14) - (i % 2) * 4, C.red);
+  if (g.time - d.refuseT < 1.4) text('SNIFF... NO', 38, 114, { color: C.cream });
+  if (g.time < d.happyUntil) { // tips are worth more for a while
+    const k = (d.happyUntil - g.time) / TREAT.lasts;
+    rbox(2, 100, 36, 11, C.greenD);
+    text(`TIPS X${TREAT.tipMul}`, 20, 102, { color: C.white, align: 'center', outline: null });
+    R(4, 108, Math.round(32 * k), 1, C.greenL);
+  }
 }
 
 // How Chimaek reacts to who is at the counter: hides from the rain frog,
@@ -165,14 +227,36 @@ function patienceBar(x, y, w, k, t) {
   R(x + 11, y + 1, bw, 4, col);
   R(x + 11, y + 1, bw, 1, mix(col, C.white, 0.4));
 }
-const SAUCE_COL = { honey: C.orange, soygarlic: C.woodD, egg: C.orange, scallion: C.greenD };
+const SAUCE_COL = { honey: C.orange, soygarlic: C.woodD, egg: C.orange, scallion: C.greenD, soydip: C.woodD };
+// A regular's mood on the corner of their bubble or ticket: a heart (glad)
+// or a rain cloud (grumpy).
+function moodMark(x, y, mood) {
+  if (mood === 'glad') {
+    rbox(x, y, 11, 10, C.white, C.pinkD);
+    heartIcon(x + 2, y + 2, C.red);
+  } else if (mood === 'grumpy') {
+    rbox(x, y, 11, 10, C.greyDD, C.ink);
+    R(x + 3, y + 2, 5, 2, C.grey); R(x + 2, y + 3, 7, 2, C.grey);
+    R(x + 3, y + 6, 1, 2, C.teal); R(x + 6, y + 6, 1, 2, C.teal);
+  }
+}
+// The daily special pays double: a small gold X2 on the item picture.
+function x2Mark(x, y) {
+  text('X2', x, y, { color: C.yellow, outline: C.ink });
+}
+// A VIP's gold ribbon on top of the bubble or ticket.
+function vipRibbon(cx, y) {
+  rbox(cx - 12, y - 4, 24, 9, C.gold);
+  text('VIP', cx, y - 2, { color: C.ink, outline: null, align: 'center' });
+}
 
 // The single guest's order bubble: pictures and names.
 function orderBubble(g, c, t) {
   const lines = c.order.lines;
   const x = 90, y = 30, w = 86;
   const h = 8 + lines.length * 18 + 10;
-  rbox(x, y, w, h, C.white);
+  rbox(x, y, w, h, C.white, c.order.vip ? C.gold : C.ink);
+  if (c.order.vip) vipRibbon(x + w / 2, y);
   R(x - 5, y + 30, 6, 3, C.ink); R(x - 3, y + 31, 4, 1, C.white); R(x - 1, y + 29, 2, 5, C.white); R(x - 1, y + 28, 1, 1, C.ink);
   const ready = scoreServe(c.order, g.tray, 1).lines;
   lines.forEach((l, i) => {
@@ -180,9 +264,11 @@ function orderBubble(g, c, t) {
     drawItem(l.item, x + 3, ly, { cook: 'done', sauce: l.sauce });
     text(ITEMS[l.item].short, x + 22, ly + (l.sauce ? 1 : 5), { color: C.ink, outline: null });
     if (l.sauce) text(`+${SAUCES[l.sauce].short}`, x + 22, ly + 9, { color: SAUCE_COL[l.sauce] || C.red, outline: null });
+    if (l.item === g.def.special) x2Mark(x + 2, ly + 11);
     if (ready[i].status === 'ok') tick(x + w - 10, ly + 6);
   });
   patienceBar(x + 4, y + h - 9, w - 8, c.patience / c.maxPatience, t);
+  moodMark(x - 4, y - 3, c.regular);
 }
 
 // A queue guest's ticket: small pictures (item, + sauce), ticks and patience.
@@ -191,16 +277,20 @@ function ticket(g, c, cx, t) {
   const lines = c.order.lines;
   const x = Math.round(cx - TICKET_W / 2), y = 29;
   const h = 6 + lines.length * 17 + 9;
-  rbox(x, y, TICKET_W, h, C.white);
+  rbox(x, y, TICKET_W, h, c.order.vip ? C.yellow : C.white, c.order.vip ? C.orange : C.ink);
+  if (c.order.vip) vipRibbon(cx, y);
+  if (c.order.rush) { R(x + 2, y + 1, TICKET_W - 4, 2, C.red); text('RUSH', x + TICKET_W - 3, y + h - 16, { color: C.red, outline: null, align: 'right' }); }
   R(x + TICKET_W / 2 - 2, y + h, 5, 1, C.ink); R(x + TICKET_W / 2 - 1, y + h + 1, 3, 1, C.ink); // pointer
   const ready = scoreServe(c.order, g.tray, 1).lines;
   lines.forEach((l, i) => {
     const ly = y + 3 + i * 17;
     drawItem(l.item, x + 2, ly, { cook: 'done' });
     if (l.sauce) { text('+', x + 20, ly + 5, { color: C.ink, outline: null }); drawSauce(l.sauce, x + 24, ly, false, 1); }
+    if (l.item === g.def.special) x2Mark(x + 1, ly + 11);
     if (ready[i].status === 'ok') tick(x + TICKET_W - 10, ly + 5);
   });
   patienceBar(x + 3, y + h - 8, TICKET_W - 6, c.patience / c.maxPatience, t);
+  moodMark(x - 3, y - 3, c.regular);
 }
 
 function reactionBubble(c, cx) {
@@ -264,7 +354,15 @@ function banner(app) {
 export function hud(app) {
   const g = app.g;
   R(0, 0, W, 14, C.ink);
-  if (g && app.screen === 'game') {
+  if (g && app.screen === 'game' && g.endless) { // endless: guests so far and the strikes left
+    for (const [dx, dy] of [[0, 1], [1, 0], [2, 0], [3, 1], [4, 2], [5, 2], [6, 1], [7, 0], [8, 0], [9, 1], [8, 2], [7, 2], [2, 2], [1, 2]]) R(5 + dx, 5 + dy, 1, 1, C.gold); // an infinity sign
+    coinIcon(30, 3);
+    text(String(app.shownCoins ?? g.coins), 40, 4, { font: 'big', color: C.yellow });
+    text(`GUEST ${Math.max(1, g.custIdx + 1)}`, 70, 4, { color: C.cream });
+    for (let k = 0; k < g.def.strikes; k++) heartIcon(110 + k * 8, 4, k < g.def.strikes - g.lost ? C.red : C.greyDD);
+    R(138, 4, 7, 1, C.grey); R(138, 6, 7, 1, C.grey); R(138, 8, 7, 1, C.grey); // menu
+    hit(132, 0, 15, 14, () => app.toTitle());
+  } else if (g && app.screen === 'game') {
     text(`LV ${g.level}`, 4, 4, { color: C.gold });
     coinIcon(30, 3);
     text(String(app.shownCoins ?? g.coins), 40, 4, { font: 'big', color: C.yellow });
@@ -297,7 +395,21 @@ export function stationAlert(g, id) {
     if (g.wok.scorch > 0 || g.wok.idle > g.cook.wok.idleSafe * 0.6) return 'burn';
     if (wokState(g.wok, g.cook.wok) === 'done') return 'ready';
   }
+  if (id === 'steamer') {
+    const its = g.steamer.filter((b) => b && b.lid);
+    if (its.some((b) => b.p > g.cook.steam.perfectHi)) return 'burn';
+    if (its.some((b) => steamState(b, g.cook.steam) === 'done')) return 'ready';
+  }
+  if (id === 'pot' && g.pot) {
+    if (g.pot.item && g.pot.p > g.cook.pot.perfectHi) return 'burn';
+    if (potState(g.pot, g.cook.pot) === 'done' || (potBoiling(g.pot) && !g.pot.item)) return 'ready';
+  }
   return null;
+}
+// The station's name on its tab, or its short name when the tab is narrow.
+export function tabLabel(id, w) {
+  const full = STATIONS[id].name.toUpperCase();
+  return tw(full) <= w - 2 ? full : (STATIONS[id].tab || full).toUpperCase();
 }
 function tabs(app) {
   const g = app.g;
@@ -309,15 +421,17 @@ function tabs(app) {
     const cur = i === g.station;
     if (cur) { R(x + 1, TABS_Y + 1, w - 2, 13, C.cream); R(x + 1, TABS_Y + 13, w - 2, 1, C.cream); }
     else R(x + 1, TABS_Y + 2, w - 2, 10, mix(C.woodDD, C.ink, 0.3));
-    const lab = STATIONS[s.id].name.toUpperCase();
+    const lab = tabLabel(s.id, w);
     const col = cur ? C.ink : s.status === 'open' ? C.cream : C.greyD;
     if (s.status !== 'open') {
-      lockIcon(x + 3, TABS_Y + 2, cur ? C.greyD : C.greyDD);
-      text(lab, x + 14, TABS_Y + 5, { color: col, outline: cur ? null : C.ink });
+      if (tw(lab) + 14 <= w) {
+        lockIcon(x + 3, TABS_Y + 2, cur ? C.greyD : C.greyDD);
+        text(lab, x + 14, TABS_Y + 5, { color: col, outline: cur ? null : C.ink });
+      } else lockIcon(x + Math.floor(w / 2) - 4, TABS_Y + 2, cur ? C.greyD : C.greyD);
     } else text(lab, x + w / 2, TABS_Y + 5, { color: col, align: 'center', outline: cur ? null : C.ink });
     // A dot on another station's tab when food there is ready (green) or burning (red).
     const a = !cur && s.status === 'open' && g.phase === 'play' ? stationAlert(g, s.id) : null;
-    if (a && (a === 'ready' || Math.floor(app.time * 4) % 2)) { R(x + w - 7, TABS_Y + 2, 5, 5, C.ink); R(x + w - 6, TABS_Y + 3, 3, 3, a === 'ready' ? C.green : C.red); }
+    if (a && (a === 'ready' || Math.floor(app.time * 4) % 2)) { R(x + w - 6, TABS_Y + 1, 5, 4, C.ink); R(x + w - 5, TABS_Y + 2, 3, 2, a === 'ready' ? C.green : C.red); }
     hit(x, TABS_Y, w, 14, () => app.goStation(i), 'tab');
   });
 }
@@ -437,8 +551,14 @@ export const grillSlotX = (g, i) => 6 + i * grillPitch(g) + Math.floor(grillPitc
 function grillPanel(app, ox, live) {
   const g = app.g, t = app.time, drag = !tapMode(app);
   panelBg(ox);
-  bin(app, ox + 4, PANEL_Y + 2, 44, 'galbi', 'GALBI', { p: 0 }, live, 'galbi', () => G.grillAdd(g, 'galbi'));
-  bin(app, ox + 52, PANEL_Y + 2, 44, 'sausage', 'SAUSAGE', { p: 0 }, live, 'sausage', () => G.grillAdd(g, 'sausage'));
+  if (g.dog) { // three bins: plain beef for Chimaek joins them
+    ['galbi', 'sausage', 'plain'].forEach((id, i) => {
+      bin(app, ox + 3 + i * 32, PANEL_Y + 2, 31, id, id === 'plain' ? 'PLAIN' : ITEMS[id].short, { p: 0 }, live, id, () => G.grillAdd(g, id));
+    });
+  } else {
+    bin(app, ox + 4, PANEL_Y + 2, 44, 'galbi', 'GALBI', { p: 0 }, live, 'galbi', () => G.grillAdd(g, 'galbi'));
+    bin(app, ox + 52, PANEL_Y + 2, 44, 'sausage', 'SAUSAGE', { p: 0 }, live, 'sausage', () => G.grillAdd(g, 'sausage'));
+  }
   sauceShelf(app, ox, STATION_SAUCES.grill, live);
   const gy = PANEL_Y + 46;
   rbox(ox + 3, gy, 174, 98, C.steelD);
@@ -599,6 +719,179 @@ function wokPanel(app, ox, live) {
   }
 }
 
+// The steamer: two bamboo baskets over a pot of water. Food goes in a basket,
+// a lid from the rack goes on (it only steams with the lid on), a flick up
+// lifts the lid, and the food is dragged to the tray.
+const BAMBOO = '#c9a46a', BAMBOO_D = '#9a7440', BAMBOO_L = '#e4c890';
+export const steamX = (i) => 8 + i * 84 + 40;
+export function lidArt(x, y, w) { // a bamboo dome lid, w wide and 9 tall (+2 for the knob)
+  x = Math.round(x); y = Math.round(y);
+  R(x + w / 2 - 3, y - 2, 6, 2, C.ink); R(x + w / 2 - 2, y - 2, 4, 1, BAMBOO_D);
+  R(x + 4, y, w - 8, 1, C.ink);
+  R(x + 2, y + 1, w - 4, 1, C.ink); R(x + 4, y + 1, w - 8, 1, BAMBOO_L);
+  R(x + 1, y + 2, w - 2, 5, C.ink); R(x + 2, y + 2, w - 4, 5, BAMBOO);
+  R(x + 3, y + 2, w - 6, 1, BAMBOO_L);
+  for (let i = x + 5; i < x + w - 4; i += 4) R(i, y + 3, 1, 4, BAMBOO_D);
+  R(x, y + 7, w, 2, C.ink); R(x + 1, y + 7, w - 2, 1, BAMBOO_D);
+}
+function basketArt(mid, y, front) { // 60 x 20: the back rim, or the woven front
+  if (!front) { R(mid - 30, y, 60, 3, C.ink); R(mid - 29, y + 1, 58, 1, BAMBOO_D); return; }
+  R(mid - 30, y + 3, 60, 17, C.ink);
+  R(mid - 29, y + 3, 58, 16, BAMBOO);
+  R(mid - 29, y + 3, 58, 2, BAMBOO_L);
+  for (let k = y + 7; k < y + 19; k += 4) R(mid - 29, k, 58, 1, BAMBOO_D);
+  for (let i = mid - 26; i < mid + 28; i += 6) R(i, y + 8, 1, 10, mix(BAMBOO, BAMBOO_D, 0.5));
+}
+function steamerPanel(app, ox, live) {
+  const g = app.g, t = app.time, drag = !tapMode(app);
+  panelBg(ox);
+  STEAM_ITEMS.forEach((id, i) => {
+    bin(app, ox + 3 + i * 32, PANEL_Y + 2, 31, ITEMS[id].raw, ITEMS[id].bin, {}, live, id, () => G.steamAdd(g, id));
+  });
+  // the lid rack: one lid for each basket that has none on
+  const rx = ox + 67;
+  const free = G.freeLids(g) - (holding(app, 'lid') ? 1 : 0);
+  rbox(rx, PANEL_Y + 2, 31, 34, C.steel);
+  R(rx + 2, PANEL_Y + 4, 27, 30, C.steelD);
+  for (let k = 0; k < free; k++) lidArt(rx + 3, PANEL_Y + 23 - k * 9, 25);
+  if (free <= 0) text('NONE', rx + 15, PANEL_Y + 16, { color: C.greyD, align: 'center', outline: null });
+  label('LIDS', rx + 15, PANEL_Y + 38);
+  if (live && drag && G.freeLids(g) > 0) src(rx, PANEL_Y + 2, 31, 42, { kind: 'lid' });
+  sauceShelf(app, ox, STATION_SAUCES.steamer, live);
+  const fy = PANEL_Y + 46;
+  rbox(ox + 3, fy, 174, 98, C.steelD);
+  R(ox + 6, fy + 3, 168, 92, '#1e1820');
+  // the water pot under the baskets, and its burner
+  rbox(ox + 10, fy + 50, 160, 14, C.steel);
+  R(ox + 12, fy + 52, 156, 2, mix(C.steel, C.white, 0.3));
+  for (let x = 14; x < 168; x += 4) {
+    const f = Math.sin(t * 6 + x * 0.8) * 0.5 + 0.5;
+    R(ox + x, fy + 64, 3, 3, mix(C.blueD, C.teal, f * 0.5));
+  }
+  g.steamer.forEach((b, i) => {
+    const x0 = ox + 8 + i * 84, mid = x0 + 40;
+    const box = [x0 + 4, fy + 2, 76, 82];
+    if (live && drag) dst(...box, { kind: 'steamBasket', slot: i });
+    const by = fy + 30;
+    basketArt(mid, by, false);
+    const lidAge = b && b.lidT != null ? g.time - b.lidT : 9;
+    if (b && !b.lid && !holding(app, 'steam', i)) drawItem(b.item, mid - 16, by - 20 - bounceAmt(app.fx, `steamer:${i}`), { p: b.p, scale: 2 });
+    basketArt(mid, by, true);
+    if (b && b.lid) {
+      const hop = lidAge < 0.2 ? -Math.round(Math.sin((lidAge / 0.2) * Math.PI) * 4) : 0;
+      lidArt(mid - 31, by - 8 + hop, 62);
+      // steam leaks from under the lid
+      const k = (t * 1.2 + i * 0.5) % 1;
+      R(mid - 34 - Math.round(k * 3), by - 2 - Math.round(k * 8), 2, 2, mix('#d8d8e8', '#1e1820', k));
+      R(mid + 32 + Math.round(k * 3), by - 3 - Math.round(k * 9), 2, 2, mix('#d8d8e8', '#1e1820', k));
+    }
+    if (!b) { text('EMPTY', mid, fy + 20, { color: C.greyDD, outline: null, align: 'center' }); return; }
+    const st = steamState(b, g.cook.steam);
+    meter(x0 + 8, fy + 70, 64, 4, b.p, g.cook.steam, b.lid);
+    if (drag) {
+      if (b.lid) gestureLabels(mid, fy + 78, 'LIFT', null);
+      else {
+        if (st === 'raw') text('NEEDS A LID', mid, fy + 78, { color: Math.floor(t * 3) % 2 ? C.yellow : C.cream, align: 'center' });
+        else if (st === 'burnt') text('SOGGY', mid, fy + 78, { color: C.red, align: 'center' });
+        gestureLabels(mid, fy + 86, null, st === 'burnt' ? 'BIN' : 'TRAY');
+      }
+      if (live) src(...box, { kind: 'steam', slot: i });
+    } else {
+      const takeCol = st === 'done' ? C.greenD : st === 'burnt' ? C.redD : C.steelD;
+      button(x0 + 6, fy + 79, 32, 12, b.lid ? 'LIFT' : 'LID', C.blueD, live && (() => G.steamLid(g, i)), `lid:${i}`);
+      button(x0 + 42, fy + 79, 32, 12, st === 'burnt' ? 'TOSS' : 'TAKE', takeCol, live && (() => G.steamTake(g, i)), `steamtake:${i}`);
+    }
+  });
+}
+
+// The noodle pot: kettle water in, wait for the boil, ramyeon in, then to the
+// tray in the gold. The broth goes with the noodles, so the pot is empty again.
+export const POT_CX = 90;
+export function kettleArt(x, y) { // 28 x 24
+  x = Math.round(x); y = Math.round(y);
+  R(x + 8, y, 12, 3, C.ink); R(x + 9, y + 1, 10, 1, C.greyD); // handle
+  R(x + 7, y + 2, 2, 6, C.ink); R(x + 19, y + 2, 2, 6, C.ink);
+  R(x + 4, y + 7, 20, 2, C.ink); R(x + 12, y + 6, 4, 2, C.ink); // lid
+  R(x + 2, y + 9, 24, 13, C.ink); R(x + 3, y + 9, 22, 12, '#c8d0dc');
+  R(x + 4, y + 10, 4, 9, C.white); R(x + 20, y + 10, 4, 10, '#9aa6b8');
+  R(x + 2, y + 21, 24, 2, C.ink);
+  R(x + 24, y + 12, 3, 3, C.ink); R(x + 26, y + 10, 2, 3, C.ink); R(x + 25, y + 13, 1, 1, '#9aa6b8'); // spout
+}
+function potPanel(app, ox, live) {
+  const g = app.g, t = app.time, drag = !tapMode(app);
+  panelBg(ox);
+  bin(app, ox + 3, PANEL_Y + 2, 44, 'ramyeon_raw', 'RAMYEON', {}, live, 'ramyeon', () => G.potAdd(g, 'ramyeon'));
+  const kx = ox + 51;
+  rbox(kx, PANEL_Y + 2, 44, 34, C.steel);
+  R(kx + 2, PANEL_Y + 4, 40, 30, C.steelD);
+  if (!holding(app, 'kettle')) kettleArt(kx + 8, PANEL_Y + 7 - bounceAmt(app.fx, 'bin:kettle'));
+  label('KETTLE', kx + 22, PANEL_Y + 38);
+  if (live) {
+    if (drag) src(kx, PANEL_Y + 2, 44, 42, { kind: 'kettle' });
+    else hit(kx, PANEL_Y + 2, 44, 42, () => G.potWater(g), 'bin:kettle');
+  }
+  sauceShelf(app, ox, STATION_SAUCES.pot, live);
+  const wy = PANEL_Y + 46, cx = ox + POT_CX;
+  rbox(ox + 3, wy, 174, 98, C.steelD);
+  R(ox + 6, wy + 3, 168, 92, '#1e1820');
+  const pt = g.pot, spec = g.cook.pot;
+  const boiling = potBoiling(pt);
+  for (let x = -40; x <= 40; x += 4) { // burner
+    const f = Math.sin(t * 7 + x * 0.9) * 0.5 + 0.5;
+    const hgt = 2 + Math.round(f * (pt ? 3 : 1));
+    R(cx + x, wy + 70 - hgt, 3, hgt, mix(C.blueD, C.teal, f * 0.5));
+  }
+  // the pot: a wide steel pot with two handles
+  const top = wy + 26, ph = 40;
+  R(cx - 50, top + 4, 8, 4, C.ink); R(cx + 42, top + 4, 8, 4, C.ink);
+  R(cx - 49, top + 5, 6, 2, C.steel); R(cx + 43, top + 5, 6, 2, C.steel);
+  R(cx - 43, top, 86, ph, C.ink);
+  R(cx - 42, top + 1, 84, ph - 2, '#5a6478');
+  R(cx - 42, top + 1, 84, 2, C.steel);
+  R(cx - 40, top + 3, 80, 6, '#2a2236'); // inside, above the water
+  if (pt) {
+    const k = pt.boil;
+    R(cx - 40, top + 5, 80, 4, mix('#3a5a8a', '#6aa0d8', k)); // water
+    if (boiling) for (let i = 0; i < 9; i++) {
+      const bx = cx - 36 + ((i * 23 + Math.floor(t * 9) * 7) % 72);
+      R(bx, top + 4 - (Math.floor(t * 8 + i) % 2), 2, 2, C.white);
+    }
+    if (pt.item && !holding(app, 'pot')) { // noodles swirl on the surface
+      const col = pt.p > spec.perfectHi ? mix('#f6d06a', '#d8d0b8', Math.min(1, (pt.p - spec.perfectHi) / 0.25)) : pt.p < 0.3 ? '#f2c45a' : '#f6d06a';
+      for (let i = -34; i < 34; i += 3) R(cx + i, top + 5 + Math.round(Math.sin(i * 0.7 + t * 4) * 1.2), 2, 1, col);
+      for (let i = -30; i < 30; i += 4) R(cx + i, top + 7 + Math.round(Math.cos(i * 0.5 + t * 3)), 3, 1, mix(col, '#c8902a', 0.3));
+    }
+  }
+  for (let y = top + 12; y < top + ph - 3; y += 6) R(cx - 41, y, 82, 1, '#4c5466');
+  const box = [ox + 20, wy + 4, 140, 76];
+  if (live && drag) dst(...box, { kind: 'pot' });
+  let msg, col = C.cream;
+  if (!pt) { msg = drag ? 'DRAG THE KETTLE ON' : 'TAP THE KETTLE'; col = C.greyD; }
+  else if (!boiling) { msg = pt.queued ? 'HEATING... NOODLES NEXT' : 'HEATING...'; col = C.teal; }
+  else if (!pt.item) { msg = 'BOILING! ADD RAMYEON'; col = Math.floor(t * 3) % 2 ? C.yellow : C.cream; }
+  else {
+    const st = potState(pt, spec);
+    if (st === 'burnt') { msg = 'TOO SOFT! BIN IT'; col = C.red; }
+    else if (st === 'done') { msg = 'DONE! TO THE TRAY'; col = C.greenL; }
+    else msg = ITEMS[pt.item].short;
+  }
+  rbox(cx - tw(msg) / 2 - 4, wy + 6, tw(msg) + 9, 10, C.ink);
+  text(msg, cx, wy + 8, { color: col, align: 'center' });
+  if (pt && !boiling) { // the boil bar
+    R(cx - 57, wy + 71, 114, 6, C.ink); R(cx - 56, wy + 72, 112, 4, C.greyDD);
+    R(cx - 56, wy + 72, Math.round(112 * pt.boil), 4, C.teal);
+  } else if (pt && pt.item) meter(cx - 56, wy + 72, 112, 4, pt.p, spec, true);
+  if (!pt || !pt.item) return;
+  const st = potState(pt, spec);
+  if (drag) {
+    gestureLabels(cx + 34, wy + 83, null, st === 'burnt' ? 'BIN' : 'TRAY');
+    if (live) src(...box, { kind: 'pot' });
+  } else {
+    button(cx + 6, wy + 81, 60, 12, st === 'burnt' ? 'THROW OUT' : 'TAKE', st === 'done' ? C.greenD : st === 'burnt' ? C.redD : C.steelD, live && (() => G.potTake(g)), 'take:pot');
+    if (live) hit(cx - 44, top, 88, ph, () => G.potTake(g), 'take:pot');
+  }
+}
+
 function lockedPanel(app, ox, s) {
   R(ox, PANEL_Y, W, PANEL_H, '#191424');
   for (let y = PANEL_Y; y < PANEL_Y + PANEL_H; y += 4) R(ox, y, W, 1, '#1e1830');
@@ -607,7 +900,10 @@ function lockedPanel(app, ox, s) {
   R(cx - 14, PANEL_Y + 40, 28, 24, C.ink); R(cx - 12, PANEL_Y + 42, 24, 20, C.greyD); R(cx - 1, PANEL_Y + 47, 3, 8, C.ink);
   text(STATIONS[s.id].name.toUpperCase(), cx, PANEL_Y + 74, { font: 'big', align: 'center', color: C.cream });
   text(`UNLOCKS IN LEVEL ${STATIONS[s.id].unlock}`, cx, PANEL_Y + 88, { align: 'center', color: C.gold });
-  const teaser = { grill: 'GALBI AND SAUSAGES', fryer: 'FRIED CHICKEN AND BEER', wok: 'TOSS NOODLES AND RICE' }[s.id];
+  const teaser = {
+    grill: 'GALBI AND SAUSAGES', fryer: 'FRIED CHICKEN AND BEER', wok: 'TOSS NOODLES AND RICE',
+    steamer: 'MANDU AND STEAMED BUNS', pot: 'RAMYEON, BOILED TO ORDER',
+  }[s.id];
   if (teaser) text(teaser, cx, PANEL_Y + 100, { align: 'center', color: C.greyD });
 }
 
@@ -618,6 +914,8 @@ function drawPanel(app, idx, ox, live) {
   else if (s.id === 'grill') grillPanel(app, ox, live);
   else if (s.id === 'fryer') fryerPanel(app, ox, live);
   else if (s.id === 'wok') wokPanel(app, ox, live);
+  else if (s.id === 'steamer') steamerPanel(app, ox, live);
+  else if (s.id === 'pot') potPanel(app, ox, live);
   drawParts(app.fx, s.id, ox);
 }
 
@@ -700,11 +998,13 @@ function hintFor(app) {
     return {
       counter: 'DRAG FOOD DOWN TO THE TRAY', grill: 'DRAG MEAT ON. FLICK UP: FLIP',
       fryer: 'BATTER, BASKET, THEN THE TRAY', wok: 'FLICK UP TO TOSS. LET IT LAND',
+      steamer: 'FOOD IN, LID ON, FLICK UP TO LIFT', pot: 'KETTLE, WAIT FOR THE BOIL, NOODLES',
     }[s.id];
   }
   return {
     counter: 'TAP DRINKS AND FOOD TO TAKE THEM', grill: 'COOK BOTH SIDES: FLIP, THEN TAKE',
     fryer: 'BATTER, FRY, LIFT IN THE GOLD', wok: 'TOSS, WAIT FOR IT TO LAND, TOSS',
+    steamer: 'TAP FOOD. TAKE IT IN THE GOLD', pot: 'TAP THE KETTLE, THEN RAMYEON',
   }[s.id];
 }
 function subHint(app) {
@@ -723,13 +1023,17 @@ export function drawPayload(g, p, x, y) {
     case 'bin': {
       const k = ITEMS[p.item].kind;
       if (k === 'fry') return drawItem('chicken', x, y, { raw: true, scale: 2 });
-      if (k === 'wok') return drawItem(ITEMS[p.item].raw, x, y, { scale: 2 });
+      if (k === 'wok' || k === 'steam' || k === 'pot') return drawItem(ITEMS[p.item].raw, x, y, { scale: 2 });
       return drawItem(p.item, x, y, { p: 0, scale: 2 });
     }
     case 'grill': { const it = g.grill[p.slot]; if (it) drawItem(it.item, x, y, { up: it.sides[1 - it.down], scale: 2 }); return undefined; }
     case 'bowl': return drawItem('chicken', x, y, { p: 0, scale: 2 });
     case 'basket': { const it = g.fryer.baskets[p.slot]; if (it) drawItem('chicken', x, y, { p: it.p, scale: 2 }); return undefined; }
     case 'wok': if (g.wok) drawItem(g.wok.item, x, y, { p: g.wok.p, scorch: g.wok.scorch, scale: 2 }); return undefined;
+    case 'lid': return lidArt(x, y + 12, 32);
+    case 'steam': { const b = g.steamer[p.slot]; if (b) drawItem(b.item, x, y, { p: b.p, scale: 2 }); return undefined; }
+    case 'kettle': return kettleArt(x + 2, y + 4);
+    case 'pot': if (g.pot && g.pot.item) drawItem(g.pot.item, x, y, { p: g.pot.p, scale: 2 }); return undefined;
     case 'sauce': return drawSauce(p.id, x, y, false, 2);
     case 'tray': { const it = g.tray[p.index]; if (it) drawItem(it.item, x, y, { cook: it.cook, sauce: it.sauce, scale: 2 }); return undefined; }
     case 'serve': { // the whole tray, small
@@ -778,8 +1082,16 @@ export function drawGame(app, reg) {
   drawMarket(app.time, { rain: !!g.def.rain });
   drawGuests(app);
   if (g.def.rain) drawRain(app.time);
-  awningAndCounter(app.time, { react: g.phase === 'play' ? dogReact(g) : null });
+  awningAndCounter(app.time, { ...dogLook(g, app.time), special: g.def.special });
   drawOrders(app);
+  dogExtras(app);
+  if (g.dog && g.phase === 'play' && !app.slide) { // give Chimaek her treat
+    const B = DOG_BOX;
+    if (!tapMode(app)) {
+      dst(B.x, B.y, B.w, B.h, { kind: 'dog' });
+      hit(B.x, B.y, B.w, B.h, () => app.say(g.dog.want ? 'DRAG PLAIN BEEF ONTO HER' : 'GOOD DOG'), 'dog');
+    } else hit(B.x, B.y, B.w, B.h, () => G.tapDog(g), 'dog');
+  }
   drawParts(app.fx, 'world');
   banner(app);
   tabs(app);
