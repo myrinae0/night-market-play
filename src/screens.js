@@ -4,10 +4,11 @@
 // of hits, drag sources and drop targets for main.js.
 import { W, H, C, R, rbox, text, tw, mix, getCtx } from './gfx.js';
 import { LEVELS, STATIONS, UPGRADES, SHOP_FROM_LEVEL, RESET_TEXT, ITEMS, COOK, COOK_TEXT, STATION_KIND } from './data.js';
-import { isUnlocked, levelDef, canBuy } from './logic.js';
+import { isUnlocked, levelDef, canBuy, upgradeOpen } from './logic.js';
 import { drawItem, drawCustomer, drawShiba, drawPortrait, starIcon, lockIcon, coinIcon, heartIcon } from './sprites.js';
 import { SPIRITS, SPIRIT_IDS } from './spirits.js';
 import { SCENES, speakerName, afterSceneFor } from './story.js';
+import { goalDef, BADGES, badgeById } from './goals.js';
 import {
   drawGame, drawMarket, drawRain, awningAndCounter, hud, tapMode, SCENE_H, COUNTER_Y, lidArt, kettleArt, inScene, stallFront,
 } from './render.js';
@@ -86,6 +87,9 @@ function titleScreen(app) {
     coinIcon(112, 87);
     text(String(app.save.wallet), 122, 88, { color: C.yellow });
   }, [80, 26, 180, 100]);
+  // The daily goals hang from the awning, left of the sign (tap: goals and badges).
+  const hang = Math.floor((S.cy - COUNTER_Y) / 2);
+  withOrigin(S.d, hang, () => goalsBoard(app, 3, 27, 78, hang), [0, 26, 82, 64]);
   woodFloor(floor.y, floor.x, floor.w);
   if (LAY.mode === 'wide') { R(floor.x - 3, 14, 3, H - 14, C.woodD); R(floor.x - 2, 14, 1, H - 14, C.wood); R(floor.x - 4, 14, 1, H - 14, C.ink); }
   withOrigin(cards.dx, cards.dy, () => titleCards(app, pitch), [0, SCENE_H, 180, 390 + 4 * (pitch - 41)]);
@@ -126,16 +130,140 @@ function titleCards(app, pitch = 41) {
     } else lockIcon(x + w - 14, y + 4, C.greyD);
   });
   const by = SCENE_H + 21 + 4 * pitch;
-  button(6, by, 82, 16, 'STORY', C.purple, () => app.openLog(), 'ui', 'small', 'story');
-  if (shopOpen(app.save)) button(92, by, 82, 16, 'SHOP', C.greenD, () => app.openShop(null), 'ui', 'small', 'shop');
+  button(6, by, 54, 16, 'STORY', C.purple, () => app.openLog(), 'ui', 'small', 'story');
+  const nb = Object.keys(app.save.badges || {}).length;
+  button(63, by, 54, 16, `BADGES ${nb}/${BADGES.length}`, C.blueD, () => app.openBadges(), 'ui', 'small', 'badges');
+  if (shopOpen(app.save)) button(120, by, 54, 16, 'SHOP', C.greenD, () => app.openShop(null), 'ui', 'small', 'shop');
   else {
-    button(92, by, 82, 16, '', C.greyDD, null);
-    lockIcon(98, by + 3, C.greyD);
-    text(`SHOP: LEVEL ${SHOP_FROM_LEVEL}`, 136, by + 6, { color: C.greyD, align: 'center' });
+    button(120, by, 54, 16, '', C.greyDD, null);
+    lockIcon(124, by + 3, C.greyD);
+    text(`LEVEL ${SHOP_FROM_LEVEL}`, 152, by + 6, { color: C.greyD, align: 'center' });
   }
   text('ART: AROACHIFOUNDONMYPILLOW, KENNEY', 90, by + 33, { align: 'center', color: C.grey });
   text('(CC0) AND CODE. SEE CREDITS.MD', 90, by + 40, { align: 'center', color: C.grey });
 }
+
+// ---------- daily goals ----------
+// A tick box: done (green tick), or empty.
+function tickBox(x, y, done) {
+  R(x, y, 5, 5, C.ink);
+  R(x + 1, y + 1, 3, 3, done ? C.greenL : C.cream);
+  if (done) { R(x + 1, y + 2, 1, 1, C.greenD); R(x + 2, y + 3, 1, 1, C.greenD); R(x + 3, y + 1, 1, 2, C.greenD); }
+}
+// The title's goals board: a small wooden sign hung from the awning, one line
+// per goal (label and progress, or its coins once done). Tap: goals and badges.
+export function goalsBoard(app, x, y, w, hang = 0) {
+  const list = (app.save.goals && app.save.goals.list) || [];
+  const h = 12 + Math.max(1, list.length) * 7;
+  R(x + 8, y - 2 - hang, 1, 3 + hang, C.greyD); R(x + w - 9, y - 2 - hang, 1, 3 + hang, C.greyD); // the strings, up to the awning
+  rbox(x, y + 1, w, h, C.ink);
+  rbox(x, y, w, h, C.woodD);
+  R(x + 1, y + 1, w - 2, 1, C.wood);
+  text('DAILY GOALS', x + w / 2, y + 3, { color: C.gold, align: 'center', outline: null });
+  if (!list.length) text('NONE YET', x + w / 2, y + 11, { color: C.cream, align: 'center', outline: null });
+  list.forEach((g, i) => {
+    const d = goalDef(g.id), ly = y + 11 + i * 7;
+    tickBox(x + 3, ly - 1, g.done);
+    text(d.label, x + 10, ly, { color: g.done ? C.greenL : C.cream, outline: null });
+    text(g.done ? `+${d.reward}` : `${g.got}/${d.n}`, x + w - 3, ly, { color: g.done ? C.greenL : C.yellow, outline: null, align: 'right' });
+  });
+  hit(x, y - 2, w, h + 2, () => app.openBadges(), 'ui', 'goals');
+}
+// The goals on the end card: label, progress and coins; the ones finished
+// tonight say so.
+function goalRows(app, x, y, w) {
+  const list = (app.save.goals && app.save.goals.list) || [];
+  const tonight = (app.night && app.night.done) || [];
+  const coins = (app.night && app.night.goalCoins) || 0;
+  text('DAILY GOALS', x, y, { color: C.purple, outline: null });
+  if (coins) text(`TONIGHT +${coins}`, x + w, y, { color: C.greenD, outline: null, align: 'right' });
+  list.forEach((g, i) => {
+    const d = goalDef(g.id), ly = y + 9 + i * 8;
+    tickBox(x, ly - 1, g.done);
+    text(d.label, x + 8, ly, { color: g.done ? C.greenD : C.ink, outline: null });
+    text(`${g.got}/${d.n}`, x + w - 22, ly, { color: C.greyD, outline: null, align: 'right' });
+    text(`+${d.reward}`, x + w, ly, { color: tonight.includes(g.id) ? C.greenD : C.greyD, outline: null, align: 'right' });
+  });
+}
+
+// ---------- goals and badges screen ----------
+// The three goals (what each asks, progress bars, coins) and the badges in two
+// columns; tap a badge to read what it is for. Portrait: goals on top, badges
+// below. Wide: goals on the left, badges on the right.
+export const badgeBox = (i, wide) => (wide ? { x: 180 + (i % 2) * 86, y: 44 + Math.floor(i / 2) * 20, w: 84, h: 19 } : { x: 6 + (i % 2) * 86, y: 136 + Math.floor(i / 2) * 20, w: 84, h: 19 });
+function badgeIcon(b, x, y, t) { // 16 x 16
+  const ic = b.icon;
+  if (ic === 'star') starIcon(x + 3, y + 3, true, 1);
+  else if (ic === 'heart') heartIcon(x + 4, y + 5, C.red);
+  else if (ic === 'coin') { coinIcon(x + 2, y + 3); coinIcon(x + 7, y + 6); }
+  else if (ic === 'dog') drawPortrait('shiba', x, y, 1, t);
+  else if (ic === 'lantern') drawPortrait('lantern', x, y, 1, t);
+  else if (ic === 'infinity') { for (const [dx, dy] of [[0, 1], [1, 0], [2, 0], [3, 1], [4, 2], [5, 2], [6, 1], [7, 0], [8, 0], [9, 1], [8, 2], [7, 2], [2, 2], [1, 2]]) R(x + 3 + dx, y + 6 + dy, 1, 1, C.gold); }
+  else if (ic === 'bell') { R(x + 7, y + 2, 2, 1, C.ink); R(x + 5, y + 3, 6, 1, C.ink); R(x + 4, y + 4, 8, 7, C.ink); R(x + 5, y + 4, 6, 6, C.gold); R(x + 6, y + 4, 2, 4, C.yellow); R(x + 3, y + 11, 10, 2, C.ink); R(x + 4, y + 11, 8, 1, C.orange); R(x + 7, y + 13, 2, 2, C.ink); }
+  else drawItem(ic, x, y);
+}
+function badgesScreen(app) {
+  const s = app.save, t = app.time, wide = isWide();
+  R(0, 0, W, H, C.night0);
+  for (let y = 0; y < H; y += 4) R(0, y, W, 1, C.night1);
+  const bw = wide ? 352 : 180, bh = wide ? 300 : 390;
+  const dx = Math.floor((W - bw) / 2), dy = Math.max(0, Math.floor((H - bh) / 2));
+  withOrigin(dx, dy, () => {
+    // goals
+    const gx = 6, gw = 168;
+    text('DAILY GOALS', gx + gw / 2, 20, { font: 'big', align: 'center', color: C.gold });
+    text('NEW ONES COME WITH EACH NIGHT', gx + gw / 2, 31, { align: 'center', color: C.grey });
+    (s.goals.list || []).forEach((g, i) => {
+      const d = goalDef(g.id), y = 40 + i * 28;
+      rbox(gx, y + 1, gw, 26, C.ink);
+      rbox(gx, y, gw, 26, g.done ? mix(C.cream, C.greenL, 0.35) : C.cream);
+      tickBox(gx + 4, y + 4, g.done);
+      text(d.label, gx + 12, y + 4, { color: C.ink, outline: null });
+      coinIcon(gx + gw - 30, y + 3);
+      text(`+${d.reward}`, gx + gw - 4, y + 4, { color: g.done ? C.greenD : C.ink, outline: null, align: 'right' });
+      text(d.desc, gx + 4, y + 12, { color: C.greyD, outline: null });
+      R(gx + 4, y + 20, gw - 36, 3, C.greyDD);
+      R(gx + 4, y + 20, Math.round((gw - 36) * Math.min(1, g.got / d.n)), 3, g.done ? C.green : C.gold);
+      text(g.done ? 'DONE' : `${g.got}/${d.n}`, gx + gw - 4, y + 19, { color: g.done ? C.greenD : C.greyD, outline: null, align: 'right' });
+    });
+    // badges
+    const got = BADGES.filter((b) => s.badges[b.id]).length;
+    const hx = wide ? 266 : 90, hy = wide ? 20 : 126;
+    text(`BADGES ${got}/${BADGES.length}`, hx, hy, { font: 'big', align: 'center', color: C.gold });
+    BADGES.forEach((b, i) => {
+      const { x, y, w, h } = badgeBox(i, wide);
+      const on = !!s.badges[b.id], sel = app.badgeSel === i;
+      rbox(x, y, w, h, sel ? C.gold : on ? C.night2 : C.greyDD);
+      R(x + 1, y + 1, 17, 17, on ? C.night1 : C.ink);
+      if (on) badgeIcon(b, x + 1, y + 1, t);
+      else lockIcon(x + 5, y + 4, C.greyD);
+      text(b.name, x + 21, y + 7, { color: sel ? C.ink : on ? C.cream : C.greyD, outline: null });
+      hit(x, y, w, h, () => app.pickBadge(i), 'ui', `badge:${b.id}`);
+    });
+    // what the picked badge is for, and BACK
+    const fy = wide ? 252 : 340;
+    const fx = wide ? 6 : 6, fw = wide ? 168 : 168;
+    const b = BADGES[app.badgeSel ?? -1];
+    rbox(fx, wide ? 132 : fy, fw, 18, C.ink);
+    text(b ? `${b.name}: ${s.badges[b.id] ? 'EARNED' : 'NOT YET'}` : 'TAP A BADGE TO SEE WHAT IT IS FOR', fx + fw / 2, (wide ? 132 : fy) + 3, { align: 'center', color: b && s.badges[b.id] ? C.greenL : C.grey });
+    if (b) text(b.desc, fx + fw / 2, (wide ? 132 : fy) + 10, { align: 'center', color: C.cream });
+    button(wide ? 50 : 50, wide ? 160 : fy + 24, 80, 16, 'BACK', C.steelD, () => app.toTitle(), 'ui', 'small', 'back');
+    if (wide) drawShiba(90, 236, { t, scale: 3, mood: got > 9 ? 'happy' : 'wait' });
+  }, [0, 0, 180, 390]);
+}
+
+// A goal or badge note during play (and over menus): a small ribbon under the
+// HUD, one at a time.
+function noteRibbon(app) {
+  const n = app.note;
+  if (!n) return;
+  const cx = app.screen === 'game' && LAY.mode === 'wide' ? Math.floor(LAY.scene.w / 2) : Math.floor(W / 2);
+  const w = tw(n.text) + 10, y = 15 - Math.round(Math.max(0, 1 - n.t * 8) * 8);
+  rbox(cx - Math.ceil(w / 2), y + 1, w, 10, C.ink);
+  rbox(cx - Math.ceil(w / 2), y, w, 10, n.badge ? ZONE_GOLD : n.done ? C.greenD : C.night2);
+  text(n.text, cx, y + 3, { align: 'center', color: n.badge ? C.ink : C.cream, outline: n.badge ? null : C.ink });
+}
+const ZONE_GOLD = '#f2c14e';
 
 // ---------- story scene ----------
 const TYPE_RATE = 45; // letters per second
@@ -361,18 +489,28 @@ function logScreen(app) {
 }
 
 // ---------- shop ----------
-const UP_ART = { grill4: 'galbi', tray5: 'kimbap', fastfry: 'chicken', patience: 'lantern', wokfast: 'friedrice' };
-// One column of five upgrades (portrait), or two columns (wide).
+const UP_ART = { grill4: 'galbi', tray5: 'kimbap', fastfry: 'chicken', patience: 'lantern', wokfast: 'friedrice', steam3: 'mandu', kettle: 'kettle' };
+// Portrait: the upgrades in two pages (PART 1: the first five; PART 2: the
+// steamer and noodle pot ones), one column each. Wide: every upgrade at once,
+// two columns of four.
+export const SHOP_PAGES = [UPGRADES.filter((u) => !u.from).map((u) => u.id), UPGRADES.filter((u) => u.from).map((u) => u.id)];
 export function shopCardBox(i, wide) {
-  return wide ? { x: 6 + Math.floor(i / 3) * 176, y: 60 + (i % 3) * 46, w: 168, h: 42 } : { x: 6, y: 60 + i * 46, w: 168, h: 42 };
+  return wide ? { x: 6 + Math.floor(i / 4) * 176, y: 60 + (i % 4) * 44, w: 168, h: 42 } : { x: 6, y: 74 + i * 46, w: 168, h: 42 };
+}
+// The page that opens first: part 2 once one of its upgrades can be bought or
+// is new (open and not owned), else part 1.
+export function defaultShopPage(save) {
+  return UPGRADES.some((u) => u.from && upgradeOpen(u, save.stars) && !save.upgrades[u.id]) ? 1 : 0;
 }
 function shopScreen(app) {
   const s = app.save, t = app.time, wide = isWide();
   R(0, 0, W, H, C.night0);
   for (let y = 0; y < H; y += 4) R(0, y, W, 1, C.night1);
   for (let x = 0; x < W; x += 10) { const c = (x / 10) % 2 ? C.cream : C.green; R(x, 14, 10, 8, c); R(x + 1, 22, 8, 2, c); }
-  const bw = wide ? 352 : 180, rows = wide ? 3 : UPGRADES.length;
-  const y0 = 60 + rows * 46 + 4;
+  const page = Math.min(app.shopPage || 0, SHOP_PAGES.length - 1);
+  const shown = wide ? UPGRADES : UPGRADES.filter((u) => SHOP_PAGES[page].includes(u.id));
+  const bw = wide ? 352 : 180;
+  const y0 = wide ? 60 + 4 * 44 + 4 : 74 + SHOP_PAGES[0].length * 46 + 4;
   const bh = wide ? y0 + 56 : 390;
   const dx = Math.floor((W - bw) / 2), dy = Math.max(0, Math.floor((H - bh) / 2));
   withOrigin(dx, dy, () => {
@@ -381,18 +519,40 @@ function shopScreen(app) {
     rbox(cx - 26, 41, 52, 13, C.ink);
     coinIcon(cx - 22, 44);
     text(String(s.wallet), cx - 12, 45, { color: C.yellow });
-    UPGRADES.forEach((u, i) => {
+    if (!wide) {
+      ['PART 1', 'PART 2'].forEach((lab, i) => {
+        const on = page === i;
+        button(6 + i * 86, 57, 82, 13, lab, on ? C.redD : C.greyDD, () => app.setShopPage(i), 'ui', 'small', `shoppage:${i + 1}`);
+        if (on) R(10 + i * 86, 70, 74, 1, C.gold);
+      });
+    }
+    shown.forEach((u, i) => {
       const { x, y, w, h } = shopCardBox(i, wide);
       const owned = !!s.upgrades[u.id];
-      const can = canBuy({ wallet: s.wallet, upgrades: s.upgrades }, u.id);
+      const open = upgradeOpen(u, s.stars);
+      const can = canBuy({ wallet: s.wallet, upgrades: s.upgrades, stars: s.stars }, u.id);
       rbox(x, y + 1, w, h, C.ink);
-      rbox(x, y, w, h, owned ? mix(C.cream, C.greenL, 0.35) : C.cream);
+      rbox(x, y, w, h, !open ? C.greyDD : owned ? mix(C.cream, C.greenL, 0.35) : C.cream);
       rbox(x + 4, y + 4, 34, 34, C.night1);
       if (UP_ART[u.id] === 'lantern') drawPortrait('lantern', x + 5, y + 5, 2, t);
       else if (u.id === 'tray5') { // a little tray with five things on it
         rbox(x + 6, y + 20, 30, 12, C.woodL); R(x + 7, y + 21, 28, 10, C.wood);
         ['soda', 'kimbap', 'toast', 'tea', 'galbi'].forEach((id, k) => drawItem(id, x + 3 + k * 5, y + 10 + (k % 2) * 3));
+      } else if (u.id === 'steam3') { // three little baskets, one with mandu
+        for (let k = 0; k < 3; k++) { R(x + 6 + k * 10, y + 26, 9, 8, C.ink); R(x + 7 + k * 10, y + 26, 7, 7, '#c9a46a'); R(x + 7 + k * 10, y + 26, 7, 1, '#e4c890'); }
+        drawItem('mandu', x + 9, y + 4, { scale: 2 });
+      } else if (u.id === 'kettle') {
+        kettleArt(x + 7, y + 9);
+        for (let k = 0; k < 3; k++) R(x + 33, y + 15 - k * 3 - (Math.floor(t * 4 + k) % 2), 2, 2, C.white);
       } else drawItem(UP_ART[u.id], x + 5, y + 5, { scale: 2 });
+      if (!open) { // not yet: it comes with its station
+        R(x + 4, y + 4, 34, 34, mix(C.night1, C.greyDD, 0.55));
+        lockIcon(x + 16, y + 15, C.greyD);
+        text(u.name, x + 43, y + 6, { color: C.greyD, outline: null });
+        text(`OPENS WITH LEVEL ${u.from}`, x + 43, y + 15, { color: C.greyD, outline: null });
+        text(`THE ${STATIONS[u.station].name.toUpperCase()}`, x + 43, y + 28, { color: C.greyD, outline: null });
+        return;
+      }
       text(u.name, x + 43, y + 6, { color: C.ink, outline: null });
       text(u.desc, x + 43, y + 15, { color: C.greyD, outline: null });
       if (owned) text('OWNED', x + 43, y + 28, { color: C.greenD, outline: null });
@@ -638,7 +798,8 @@ function endlessCard(app) {
     text(b, 154, y, { color: C.ink, outline: null, align: 'right' });
     R(26, y + 8, 128, 1, C.cream);
   });
-  drawShiba(90, 270, { big: true, scale: 3, mood: best ? 'happy' : 'wait', t: app.time });
+  goalRows(app, 26, 204, 128);
+  drawShiba(90, 272, { big: true, scale: 2, mood: best ? 'happy' : 'wait', t: app.time });
   button(22, 280, 64, 18, 'AGAIN', C.blueD, () => app.newLevel(g.level), 'ui', 'small', 'again');
   button(94, 280, 64, 18, 'MENU', C.greenD, () => app.toTitle(), 'ui', 'small', 'menu');
   text('EVERY NIGHT IS DIFFERENT', 90, 304, { align: 'center', color: C.greyD, outline: null });
@@ -647,11 +808,11 @@ function endScreen(app) {
   clearHits();
   dim();
   if (app.g.endless) return endlessEnd(app);
-  centered(() => endCard(app), 52, 326, 14);
+  centered(() => endCard(app), 52, 350, 14);
 }
 function endCard(app) {
   const g = app.g, t = app.time - (app.endAt || 0);
-  panel(12, 52, 156, 272);
+  panel(12, 52, 156, 296);
   const ok = g.stars > 0;
   text(ok ? 'STALL CLOSED!' : 'TOUGH NIGHT...', 90, 62, { font: 'big', align: 'center', color: ok ? C.greenD : C.redD, outline: null });
   text(`LEVEL ${g.level}: ${g.def.title.toUpperCase()}`, 90, 74, { align: 'center', color: C.greyD, outline: null });
@@ -676,28 +837,30 @@ function endCard(app) {
     text(b, 154, y, { color: C.ink, outline: null, align: 'right' });
     R(26, y + 8, 128, 1, C.cream);
   });
+  goalRows(app, 26, 204, 128);
   const mem = [...(app.nightMemories || [])];
   const memRows = mem.length ? wrap(mem.map((id) => SPIRITS[id].name).join(', '), 140) : [];
   if (mem.length) {
-    text('NEW MEMORIES', 90, 205, { align: 'center', color: C.purple, outline: null });
-    memRows.slice(0, 2).forEach((r, i) => text(r, 90, 213 + i * 8, { align: 'center', color: C.ink, outline: null }));
+    text('NEW MEMORIES', 90, 240, { align: 'center', color: C.purple, outline: null });
+    memRows.slice(0, 2).forEach((r, i) => text(r, 90, 248 + i * 8, { align: 'center', color: C.ink, outline: null }));
   }
-  drawShiba(90, 270, { big: true, scale: memRows.length > 1 ? 2 : 3, mood: ok ? 'happy' : 'wait', t: app.time });
+  drawShiba(90, 298, { big: true, scale: memRows.length ? 2 : 3, mood: ok ? 'happy' : 'wait', t: app.time });
   const next = levelDef(g.level + 1);
   const shopNext = ok && g.level >= SHOP_FROM_LEVEL;
   const after = afterSceneFor(g.level);
   const epilogue = ok && after && !app.save.story.seen[after.id];
-  button(22, 280, 64, 18, 'RETRY', C.blueD, () => app.newLevel(g.level), 'ui', 'small', 'retry');
-  if (epilogue) button(94, 280, 64, 18, 'GO ON', Math.floor(app.time * 2) % 2 ? C.purple : C.redD, () => app.playAfter(after), 'ui', 'small', 'next');
-  else if (ok && next) button(94, 280, 64, 18, shopNext ? 'SHOP' : 'NEXT', C.greenD, () => app.endNext(), 'ui', 'small', 'next');
-  else if (shopNext) button(94, 280, 64, 18, 'SHOP', C.greenD, () => app.openShop(null), 'ui', 'small', 'next');
-  else button(94, 280, 64, 18, 'MENU', ok ? C.greenD : C.steelD, () => app.toTitle(), 'ui', 'small', 'menu');
+  const by = 304;
+  button(22, by, 64, 18, 'RETRY', C.blueD, () => app.newLevel(g.level), 'ui', 'small', 'retry');
+  if (epilogue) button(94, by, 64, 18, 'GO ON', Math.floor(app.time * 2) % 2 ? C.purple : C.redD, () => app.playAfter(after), 'ui', 'small', 'next');
+  else if (ok && next) button(94, by, 64, 18, shopNext ? 'SHOP' : 'NEXT', C.greenD, () => app.endNext(), 'ui', 'small', 'next');
+  else if (shopNext) button(94, by, 64, 18, 'SHOP', C.greenD, () => app.openShop(null), 'ui', 'small', 'next');
+  else button(94, by, 64, 18, 'MENU', ok ? C.greenD : C.steelD, () => app.toTitle(), 'ui', 'small', 'menu');
   let note = 'NEED 1 STAR TO OPEN THE NEXT LEVEL';
   if (ok && next && shopNext) note = `UPGRADES, THEN LEVEL ${next.n}`;
   else if (ok && next) note = nextNote(next);
   else if (epilogue) note = 'THE BELL IS RINGING AGAIN...';
   else if (ok) note = 'MORE NIGHTS COMING IN PART 3';
-  text(note, 90, 304, { align: 'center', color: ok ? C.redD : C.greyD, outline: null });
+  text(note, 90, by + 24, { align: 'center', color: ok ? C.redD : C.greyD, outline: null });
 }
 
 // ---------- cast sheet (debug: ?shot=cast) ----------
@@ -724,6 +887,7 @@ export function drawFrame(app) {
   else if (app.screen === 'scene') { sceneScreen(app); hud(app); }
   else if (app.screen === 'log') { logScreen(app); hud(app); }
   else if (app.screen === 'shop') { shopScreen(app); hud(app); }
+  else if (app.screen === 'badges') { badgesScreen(app); hud(app); }
   else if (app.screen === 'cast') castScreen(app);
   else if (app.g) {
     drawGame(app, reg);
@@ -731,6 +895,7 @@ export function drawFrame(app) {
     if (app.g.phase === 'end') { endScreen(app); hud(app); }
     drawParts(app.fx, 'top');
   }
+  if (app.screen !== 'scene' && app.screen !== 'cast') noteRibbon(app);
   if (app.settings) settingsPanel(app);
   return reg;
 }

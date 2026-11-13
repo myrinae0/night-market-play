@@ -5,7 +5,7 @@ import { LEVELS, COOK, ITEMS, SHOP_FROM_LEVEL } from './data.js';
 import { grillState, fryState, levelDef, buyUpgrade, upgradeById, nightPay, scoreServe, potBoiling, isUnlocked } from './logic.js';
 import * as G from './game.js';
 import { boxGeom, COUNTER_Y, tapMode, guestX, grillSlotX, basketX, WOK_CX, steamX, POT_CX } from './render.js';
-import { drawFrame, lineTyped, choiceBox, defaultTitlePage, TITLE_PAGES, logPages } from './screens.js';
+import { drawFrame, lineTyped, choiceBox, defaultTitlePage, TITLE_PAGES, logPages, SHOP_PAGES, defaultShopPage } from './screens.js';
 import { computeView, setLayout, LAY } from './layout.js';
 import { designToScreen } from './ui.js';
 import { createFx, updateFx, spawn, floatText, coinBurst, bounce, toast } from './fx.js';
@@ -19,6 +19,7 @@ import {
   recordService, moodsFor,
 } from './story.js';
 import { freshSave, normalizeSave, clearProgress } from './save.js';
+import { refreshGoals, earnedBadges, track, newNight, noteText } from './goals.js';
 
 const params = new URLSearchParams(location.search);
 const NOSAVE = params.has('nosave') || params.has('shot');
@@ -83,6 +84,10 @@ resize();
 
 // ---------- app ----------
 const save = loadSave();
+// Daily goals on the board, and any badges an older save already earned (no note).
+refreshGoals(save);
+earnedBadges(save);
+writeSave(save);
 audio.setMuted(save.muted);
 audio.setMusicVolume(save.musicVol);
 audio.setAmbienceVolume(save.ambVol);
@@ -94,11 +99,13 @@ const app = {
   vol: audio.volumes(), settings: false, confirmReset: false, slider: null, drag: null, snap: null,
   slide: null, pointer: null, reg: { hits: [], sources: [], targets: [], trayBox: null },
   shownCoins: 0, endAt: 0, frozen: false, banner: null, nightMemories: new Set(), lastPay: 0,
-  dlg: null, dlgT: 0, dlgThen: null, shopNext: null, shopMsg: null,
+  dlg: null, dlgT: 0, dlgThen: null, shopNext: null, shopMsg: null, shopPage: 0,
   titlePage: defaultTitlePage(save.stars), logPage: 0,
+  night: newNight(), note: null, notes: [], badgeSel: null,
 
   setTitlePage(i) { app.titlePage = Math.max(0, Math.min(TITLE_PAGES.length - 1, i)); },
   setLogPage(i) { app.logPage = Math.max(0, Math.min(logPages() - 1, i)); },
+  setShopPage(i) { app.shopPage = Math.max(0, Math.min(SHOP_PAGES.length - 1, i)); },
 
   say(text, good = false) { toast(app.fx, text, good); audio.play('tap'); },
   toggleMute() { app.muted = !app.muted; audio.setMuted(app.muted); save.muted = app.muted; writeSave(save); audio.play('tap'); },
@@ -117,6 +124,8 @@ const app = {
     app.dlg = null; app.dlgThen = null; app.shopNext = null; app.shopMsg = null;
     app.slide = null; app.snap = null; app.nightMemories = new Set(); app.lastPay = 0; app.shownCoins = 0;
     app.titlePage = 0; app.logPage = 0;
+    app.night = newNight(); app.notes = []; app.note = null;
+    refreshGoals(save); writeSave(save);
     app.toTitle();
     audio.play('trash');
   },
@@ -145,6 +154,10 @@ const app = {
   },
   newLevel(n) {
     app.screen = 'game';
+    // A new night: goals finished last night make room for new ones.
+    app.night = newNight();
+    refreshGoals(save);
+    writeSave(save);
     const def = levelDef(n);
     app.g = G.createGame(n, {
       seed: seedParam ?? (def && def.endless ? Math.floor(Math.random() * 1e9) : undefined), upgrades: save.upgrades, relTips: relTips(save.story), moods: moodsFor(save.story), autoBasket: !!save.tapControls,
@@ -173,12 +186,13 @@ const app = {
   },
 
   // ---------- shop ----------
-  openShop(next) { app.screen = 'shop'; app.g = null; app.shopNext = next; app.shopMsg = null; audio.setRain(false); },
+  openShop(next) { app.screen = 'shop'; app.g = null; app.shopNext = next; app.shopMsg = null; app.shopPage = defaultShopPage(save); audio.setRain(false); },
   leaveShop() { if (app.shopNext) app.playLevel(app.shopNext); else app.toTitle(); },
   buy(id) {
-    const purse = { wallet: save.wallet, upgrades: save.upgrades };
+    const purse = { wallet: save.wallet, upgrades: save.upgrades, stars: save.stars };
     if (!buyUpgrade(purse, id)) return app.cantBuy(id);
     save.wallet = purse.wallet;
+    app.addNotes(earnedBadges(save).map((b) => ({ kind: 'badge', id: b })));
     writeSave(save);
     audio.play('serve');
     app.shopMsg = { text: 'BOUGHT!', good: true, at: app.time };
@@ -187,11 +201,24 @@ const app = {
   cantBuy(id) {
     const u = upgradeById(id);
     audio.play('nope');
-    app.shopMsg = { text: `NEED ${u.cost - save.wallet} MORE`, good: false, at: app.time };
+    app.shopMsg = { text: save.wallet >= u.cost ? `OPENS WITH LEVEL ${u.from}` : `NEED ${u.cost - save.wallet} MORE`, good: false, at: app.time };
   },
 
   // ---------- story ----------
   openLog() { app.screen = 'log'; app.g = null; },
+  openBadges() { app.screen = 'badges'; app.g = null; app.badgeSel = null; audio.setRain(false); },
+  pickBadge(i) { app.badgeSel = app.badgeSel === i ? null : i; },
+  // Goal progress and new badges: one small ribbon at a time. A newer note
+  // for the same goal replaces one still waiting.
+  addNotes(notes) {
+    for (const n of notes) {
+      const item = { key: n.kind === 'badge' ? `b:${n.id}` : `g:${n.id}`, text: noteText(n), badge: n.kind === 'badge', done: !!n.done, t: 0 };
+      const k = app.notes.findIndex((x) => x.key === item.key);
+      if (k >= 0) app.notes[k] = item; else app.notes.push(item);
+      if (item.badge || item.done) audio.play('perfect');
+    }
+  },
+  trackEv(ev) { app.addNotes(track(save, ev, app.night)); writeSave(save); },
   replayScene(id) { app.startDialogue(sceneById(id), true, () => app.openLog()); },
   // The scene after a level (night 13's epilogue), the first time it is cleared.
   playAfter(sc) { app.startDialogue(sc, false, () => { app.toTitle(); app.titlePage = defaultTitlePage(save.stars); }); },
@@ -234,7 +261,7 @@ const app = {
 // Where the cooking box's contents start (station particles are placed from it).
 const BY = () => boxGeom().gy;
 const slotX = (g, station, slot) => (station === 'grill' ? grillSlotX(g, slot) : station === 'fryer' ? basketX(slot)
-  : station === 'steamer' ? steamX(slot) : station === 'pot' ? POT_CX : WOK_CX);
+  : station === 'steamer' ? steamX(slot, g.steamer.length) : station === 'pot' ? POT_CX : WOK_CX);
 // A spirit's memory waits until their reaction bubble is gone (t < 0 is hidden).
 function showBanner(who, text, memory) { app.banner = { who, text: text.toUpperCase(), memory, t: memory ? -0.8 : 0, life: memory ? 4.2 : 2.8 }; }
 function handleEvents() {
@@ -258,7 +285,7 @@ function handleEvents() {
     } else if (e.type === 'scorch') toast(app.fx, 'SCORCHING! TOSS IT!');
     else if (e.type === 'lid') {
       bounce(app.fx, `steamer:${e.slot}`);
-      if (!e.on) spawn(app.fx, 'steamer', steamX(e.slot), BY() + 24, 'steam', 10); // a puff as the lid comes off
+      if (!e.on) spawn(app.fx, 'steamer', steamX(e.slot, g.steamer.length), BY() + 24, 'steam', 10); // a puff as the lid comes off
     } else if (e.type === 'boiled') {
       spawn(app.fx, 'pot', POT_CX, BY() + 28, 'steam', 8);
       if (G.currentStation(g).id !== 'pot') toast(app.fx, 'THE WATER IS BOILING', true);
@@ -272,7 +299,7 @@ function handleEvents() {
       toast(app.fx, 'RUSH! QUICK ORDERS', false);
       audio.play('bell'); app.fx.shake = 0.15;
     } else if (e.type === 'dog') {
-      if (e.result === 'ate') { spawn(app.fx, 'world', 20, 110, 'confetti', 10); bounce(app.fx, 'dog'); }
+      if (e.result === 'ate') { spawn(app.fx, 'world', 20, 110, 'confetti', 10); bounce(app.fx, 'dog'); app.trackEv({ type: 'fed' }); }
       else if (e.result === 'hungry') { audio.play('sniff'); if (!app.dogHinted) { app.dogHinted = true; toast(app.fx, 'CHIMAEK LOOKS HUNGRY', true); } }
     } else if (e.type === 'served') {
       const c = g.line.find((x) => x.id === e.cid);
@@ -283,23 +310,31 @@ function handleEvents() {
       // floats live in the street's design coordinates; the coins fly to the HUD counter
       if (r.coins > 0) coinBurst(app.fx, x, 90, Math.min(12, Math.ceil(r.coins / 2)), 34 - LAY.scene.d, 3 - LAY.scene.dy);
       if (isSpirit(e.look)) { recordService(save.story, e.look, r.mood === 'happy'); writeSave(save); }
+      app.trackEv({ type: 'served', result: r, vip: e.vip, regular: e.regular, endless: g.endless });
       if (r.treat) floatText(app.fx, x, 94, `DOG BONUS +${r.treat}`, C.greenL);
       if (r.mood === 'happy') {
         spawn(app.fx, 'world', x, 80, 'confetti', 14);
         // A spirit you feed well remembers grandma: one new line per spirit per night.
         if (isSpirit(e.look)) {
           const line = unlockMemory(save.story, e.look, app.nightMemories);
-          if (line) { showBanner(SPIRITS[e.look].name, line, true); writeSave(save); }
+          if (line) { showBanner(SPIRITS[e.look].name, line, true); app.addNotes(earnedBadges(save).map((b) => ({ kind: 'badge', id: b }))); writeSave(save); }
         }
       } else app.fx.shake = 0.2;
     } else if (e.type === 'walkout') {
+      app.trackEv({ type: 'walkout' });
       if (isSpirit(e.look)) { recordService(save.story, e.look, false); writeSave(save); }
       const c = g.line.find((x) => x.id === e.cid);
       floatText(app.fx, c ? Math.round(guestX(g, c)) : 52, 70, 'WALKED OUT', C.red);
     } else if (e.type === 'end') {
       app.endAt = app.time;
-      app.lastPay = nightPay(g.coins);
-      save.wallet += app.lastPay;
+      const best0 = save.stars[g.level] || 0;
+      if (!e.endless && e.stars > best0) save.stars[g.level] = e.stars; // (badges read the stars)
+      const mixups = g.results.filter((x) => !x.walked && x.mood !== 'happy').length;
+      app.trackEv({ type: 'end', level: g.level, endless: !!e.endless, stars: e.stars, lost: g.lost, served: g.served, coins: g.coins, mixups });
+      // The purse line shows the night's coins plus any goal coins (already in the purse).
+      const pay = nightPay(g.coins);
+      save.wallet += pay;
+      app.lastPay = pay + app.night.goalCoins;
       app.newBest = false;
       if (e.endless) { // the best endless night is kept
         app.newBest = g.coins > (save.endlessBest || 0);
@@ -307,8 +342,6 @@ function handleEvents() {
         writeSave(save);
         continue;
       }
-      const best = save.stars[g.level] || 0;
-      if (e.stars > best) save.stars[g.level] = e.stars;
       writeSave(save);
       if (e.stars === 3) spawn(app.fx, 'top', Math.floor(W / 2), Math.floor(H / 2) - 90, 'confetti', 40);
       if (e.stars > 0) audio.sting();
@@ -346,7 +379,7 @@ function ambient(dt) {
   g.steamer.forEach((b, i) => {
     if (!b || !b.lid) return;
     cooking += 1;
-    if (Math.random() < dt * 5) spawn(app.fx, 'steamer', steamX(i) + (Math.random() - 0.5) * 50, BY() + 20, 'steam');
+    if (Math.random() < dt * 5) spawn(app.fx, 'steamer', steamX(i, g.steamer.length) + (Math.random() - 0.5) * 50, BY() + 20, 'steam');
   });
   if (g.pot) {
     cooking += 1;
@@ -372,6 +405,8 @@ function step(dt) {
   }
   if (app.banner) { app.banner.t += dt; if (app.banner.t > app.banner.life) app.banner = null; }
   if (app.snap) { app.snap.t += dt; if (app.snap.t > 0.16) app.snap = null; }
+  if (!app.note && app.notes.length) app.note = app.notes.shift();
+  if (app.note) { app.note.t += dt; if (app.note.t > (app.note.badge || app.note.done ? 2.6 : 1.6)) app.note = null; }
   if (updateFx(app.fx, dt)) audio.play('coin', 0.04);
   if (app.g) { // the HUD counter rolls toward the real total
     const d = app.g.coins - app.shownCoins;
@@ -543,8 +578,9 @@ window.addEventListener('pointerup', (e) => {
     app.switchStation(dx < 0 ? 1 : -1); // swipe left shows the station to the right
     return;
   }
-  if (!app.settings && (app.screen === 'title' || app.screen === 'log') && Math.abs(dx) > 30 && Math.abs(dx) > Math.abs(dy) * 1.4) {
+  if (!app.settings && ['title', 'log', 'shop'].includes(app.screen) && Math.abs(dx) > 30 && Math.abs(dx) > Math.abs(dy) * 1.4) {
     if (app.screen === 'title') app.setTitlePage(app.titlePage + (dx < 0 ? 1 : -1));
+    else if (app.screen === 'shop') app.setShopPage(app.shopPage + (dx < 0 ? 1 : -1));
     else app.setLogPage(app.logPage + (dx < 0 ? 1 : -1));
     return;
   }
@@ -579,7 +615,11 @@ window.addEventListener('keydown', (e) => {
     else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') app.setTitlePage(app.titlePage + (e.key === 'ArrowRight' ? 1 : -1));
     return;
   }
-  if (app.screen === 'shop') { if (e.key === 'Enter') app.leaveShop(); return; }
+  if (app.screen === 'shop') {
+    if (e.key === 'Enter') app.leaveShop();
+    else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') app.setShopPage(app.shopPage + (e.key === 'ArrowRight' ? 1 : -1));
+    return;
+  }
   if (app.screen === 'log') {
     if (e.key === 'Enter') app.toTitle();
     else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') app.setLogPage(app.logPage + (e.key === 'ArrowRight' ? 1 : -1));
@@ -710,6 +750,17 @@ const SHOTS = {
   end() { play(1); while (app.g.phase === 'play') autoServe(); run(2.2); },
   end5() { save.wallet = 240; play(5); while (app.g.phase === 'play') autoServe(); run(2.2); },
   shop() { save.wallet = 520; save.stars = { 5: 2 }; save.upgrades = { fastfry: true }; app.openShop(6); },
+  // Part 2 upgrades: the steamer's third basket open (and bought in steamer3), the kettle not yet.
+  shop2() { save.wallet = 610; save.stars = { 5: 3, 6: 2, 7: 2, 8: 1 }; save.upgrades = { fastfry: true, grill4: true, tray5: true }; app.openShop(9); },
+  shopall() { save.wallet = 1210; save.stars = { 5: 3, 6: 2, 7: 2, 8: 1, 9: 2, 10: 3, 11: 1 }; save.upgrades = { fastfry: true, grill4: true, tray5: true, steam3: true }; app.openShop(12); },
+  steamer3() { // three baskets: one steaming, one lifted in the gold, one empty
+    play(7, { upgrades: { steam3: true } }); const g = app.g;
+    G.steamAdd(g, 'mandu', 0); G.steamLidOn(g, 0); G.steamAdd(g, 'bun', 1); G.steamLidOn(g, 1);
+    g.steamer[0].p = 0.6; g.steamer[1].p = 1.05; G.steamLidOff(g, 1); G.steamAdd(g, 'mandu', 2); run(0.4);
+  },
+  potkettle() { // the copper kettle: the pot stays on the boil after a bowl comes off
+    play(10, { upgrades: { kettle: true } }); const g = app.g; G.potWater(g); run(g.cook.pot.boil + 0.1); G.potAdd(g, 'ramyeon'); g.pot.p = 1.0; G.potTake(g); run(0.4);
+  },
   settings() { SHOTS.grill(); app.setVolume('music', 0.6); app.setVolume('amb', 0.45); app.openSettings(); },
   settingstap() { save.tapControls = true; SHOTS.settings(); },
   // Settings from the title (RESET PROGRESS at the bottom), and its confirmation mid-level.
@@ -761,6 +812,11 @@ const SHOTS = {
   special() { play(11); const g = app.g; G.potWater(g); run(10); G.grabReady(g, 'soda'); run(0.2); },
   rush() { play(12); const g = app.g; for (let i = 0; i < 5; i++) autoServe(); run(4); G.grabReady(g, 'kimbap'); run(0.3); },
   endless() { save.stars = { 13: 1 }; save.endlessBest = 1180; play(99); const g = app.g; run(30); g.lost = 1; G.grabReady(g, 'soda'); run(0.3); },
+  endlessmid() { // about five minutes into an endless night: a VIP and a busy line
+    save.stars = { 13: 1 }; save.endlessBest = 1180; play(99); const g = app.g;
+    for (let i = 0; i < 26 && g.phase === 'play'; i++) autoServe();
+    g.lost = 1; run(1.5); G.grabReady(g, 'beer'); run(0.3);
+  },
   introendless() { save.stars = { 13: 1 }; app.newLevel(99); run(0.6); },
   endendless() { save.stars = { 13: 1 }; save.endlessBest = 900; save.wallet = 2400; play(99); for (let i = 0; i < 40 && app.g.phase === 'play'; i++) autoServe(); const g = app.g; g.lost = 3; run(2.5); },
   title2end() { SHOTS.title2(); save.stars[13] = 2; save.stars[10] = 3; save.stars[11] = 3; save.stars[12] = 2; save.endlessBest = 1432; },
@@ -770,6 +826,24 @@ const SHOTS = {
   storylog2() { save.story.seen = { l7: true, l8: true, l9: true, l10: true }; save.story.memories = { wisp: 2, fox: 5 }; app.openLog(); app.setLogPage(1); },
   scene13() { app.playLevel(13); for (let i = 0; i < 4; i++) { app.dlgT = 99; app.dlgTap(); } run(1); },
   cast() { app.screen = 'cast'; run(0.5); },
+  // ---------- daily goals and badges ----------
+  titlegoals() { // the goals board: one done, two on the way
+    SHOTS.title2end(); save.goals.list = [{ id: 'galbi', got: 5, done: true }, { id: 'streak', got: 2, done: false }, { id: 'fed', got: 1, done: false }];
+    Object.assign(save.badges, { night1: true, goldgrill: true, goldfry: true, gooddog: true, part1: true, memory: true });
+  },
+  endgoals() { // the end card: a goal finished tonight
+    save.wallet = 240; save.stars = { 1: 3, 2: 2 }; save.goals.list = [{ id: 'happy', got: 6, done: false }, { id: 'drinks', got: 3, done: false }, { id: 'clean', got: 0, done: false }];
+    play(2); while (app.g.phase === 'play') autoServe(); run(2.2);
+  },
+  badges() {
+    save.stars = { 1: 3, 2: 3, 3: 2, 4: 3, 5: 3, 6: 3, 7: 1 }; save.goals.list = [{ id: 'chicken', got: 2, done: false }, { id: 'mandu', got: 3, done: true }, { id: 'tips', got: 41, done: false }];
+    Object.assign(save.badges, { night1: true, goldgrill: true, goldfry: true, goldwok: true, goldsteam: true, part1: true, memory: true, gooddog: true });
+    app.openBadges(); app.pickBadge(9); run(0.3);
+  },
+  goalnote() { // a goal ticking up mid-night (the ribbon under the HUD)
+    save.goals.list = [{ id: 'galbi', got: 2, done: false }, { id: 'happy', got: 3, done: false }, { id: 'drinks', got: 0, done: false }];
+    play(2); autoServe(); app.notes = []; app.note = null; app.addNotes([{ kind: 'goal', id: 'galbi', got: 3, n: 5, done: false }]); run(0.3);
+  },
   // ---------- the meters' colour code: food in the green (good) and in the gold (perfect) ----------
   cookgrill() { // spot 1: both sides green (good); spot 2: both gold (perfect); spot 3: past the gold, still green
     play(2); const g = app.g;

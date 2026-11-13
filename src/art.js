@@ -168,26 +168,32 @@ export const SPIRIT_ART = {
     ]],
   },
   // Clay pot imp (level 10): a squat earthenware pot (ttukbaegi) with its lid
-  // for a hat, two puffs of steam for ears and a permanent frown.
+  // for a hat, two puffs of steam for ears and a permanent frown. Redrawn so
+  // it reads at 4x on the night sky: a warm terracotta body with a lit left
+  // side, a pale glaze band under the rim, a lid with a knob, big white eyes
+  // under heavy brows, little stub feet.
   clay: {
-    pal: { k: OL, c: '#a85a3a', C: '#6e3424', l: '#d08a62', K: '#3a2229', e: '#fee761', w: '#f2f4fa', m: '#3a1a14' },
+    pal: {
+      k: '#2a1418', c: '#c8693f', C: '#8a3e26', h: '#ec9a68', g: '#f0c86a', G: '#c89a3e', l: '#7a4a32', L: '#a8714c',
+      w: '#fbf6ea', e: '#1c1418', b: '#3a1a14', m: '#5a2418', s: '#e4e8f4', p: '#f2a0a0',
+    },
     frames: [[
-      '..w..........w..',
-      '.w.....kk.....w.',
-      '..w...kCCk...w..',
+      '.s............s.',
+      's.s....kk....s.s',
+      '.s....kLlk....s.',
       '...kkkkkkkkkk...',
-      '..kllllllllCCk..',
-      '..kkkkkkkkkkkk..',
-      '.kcccccccccccCk.',
-      'kcckkccccckkcCCk',
-      'kclceecccceeccCk',
-      'kclccccccccccCCk',
-      'kclcccmmmmcccCCk',
-      '.kcccccccccccCk.',
-      '.kCcccccccccCCk.',
-      '..kCCCCCCCCCCk..',
-      '..k.k......k.k..',
-      '................',
+      '..kLLLLlllllLk..',
+      '.kkkkkkkkkkkkkk.',
+      '.kgggggggggggGk.',
+      'kchcccccccccccCk',
+      'khbbbcccccbbbcCk',
+      'khcwwbcccbwwccCk',
+      'khcwecccccewccCk',
+      'khpccccccccpccCk',
+      '.kcccccbbcccCCk.',
+      '.kCcccbccbcCCCk.',
+      '..kkCCCCCCCCkk..',
+      '...kk......kk...',
     ]],
   },
   // Moon rabbit (level 13, the festival's guest of honour): long ears, a gold
@@ -330,139 +336,79 @@ export const FOOD_ART = {
   },
 };
 
-// ---------- part 2: steamer, noodle pot, dips (no CC0 sprite for these) ----------
+// ---------- part 2: noodle pot and dips ----------
+// Mandu and the steamed bun are the food pack's own "dumpling" and "mochi"
+// sprites (assets.js; their raw dough is a recolour made at run time). The
+// pack has no ramyeon or dip dishes, so these are drawn here on the pack's
+// own soup bowl: its outline (#42393d), its cream bowl colours and shape.
+const PACK = { a: '#42393d', b: '#e7daa8', c: '#efeadb', d: '#daca81' };
 Object.assign(FOOD_ART, {
-  // Raw mandu: two pleated dumplings, matte dough with a dusting of flour.
-  mandu_raw: {
-    pal: { k: OL, w: '#efe8da', s: '#cfc4ae', p: '#b8ad96', f: '#ffffff' },
-    rows: [
-      '................', '................', '................', '................',
-      '..k.k.....k.k...',
-      '.kpkpk...kpkpk..',
-      'kwpwpwk.kwpwpwk.',
-      'kfwwwfsk.kfwwwsk',
-      'kwwwwwsk.kwwfwsk',
-      'kswfwssk.kswwssk',
-      '.kssssk...kssk..',
-      '..kkkk.....kk...',
-      '................', '................', '................', '................',
-    ],
-  },
-  // Steamed mandu: glossy, a little see-through, a hint of filling inside.
-  mandu: {
-    pal: { k: OL, w: '#fbf3dc', s: '#e3cfa2', p: '#d6bc8a', h: '#ffffff', f: '#e8a08a' },
-    rows: [
-      '................', '................', '................', '................',
-      '..k.k.....k.k...',
-      '.kpkpk...kpkpk..',
-      'kwpwpwk.kwpwpwk.',
-      'khwwwwsk.khwwwsk',
-      'kwwffwsk.kwffwsk',
-      'kswwwssk.kswwssk',
-      '.kssssk...kssk..',
-      '..kkkk.....kk...',
-      '................', '................', '................', '................',
-    ],
-  },
-  // Raw bun: a flat round of dough.
-  bun_raw: {
-    pal: { k: OL, w: '#efe8da', s: '#cfc4ae', f: '#ffffff' },
-    rows: [
-      '................', '................', '................', '................',
-      '................', '................',
-      '....kkkkkkkk....',
-      '..kkfwwwwwwwkk..',
-      '.kfwwwwfwwwwwsk.',
-      'kwwwwwwwwwwwwssk',
-      'kswwwfwwwwwwsssk',
-      '.kksssssssssskk.',
-      '...kkkkkkkkkk...',
-      '................', '................', '................',
-    ],
-  },
-  // Steamed bun (jjinppang): puffed up, glossy, a red stamp on top.
-  bun: {
-    pal: { k: OL, w: '#fbf3dc', s: '#e3cfa2', h: '#ffffff', r: '#d8333f' },
-    rows: [
-      '................', '................', '................', '................',
-      '.....kkkkkk.....',
-      '...kkhhwwwwkk...',
-      '..khhwwwwwwwsk..',
-      '.khwwwwrrwwwwsk.',
-      '.kwwwwwrrwwwwsk.',
-      'kwwwwwwwwwwwwssk',
-      'kwwwwwwwwwwwsssk',
-      '.kswwwwwwwwsssk.',
-      '..kksssssssskk..',
-      '....kkkkkkkk....',
-      '................', '................',
-    ],
-  },
-  // Raw ramyeon: a block of instant noodles.
+  // Raw ramyeon: a block of instant noodles, wavy, golden.
   ramyeon_raw: {
-    pal: { k: OL, y: '#f2c45a', h: '#ffe08a', d: '#c8902a' },
+    pal: { a: PACK.a, n: '#e8b84a', h: '#f8dc84', d: '#b8822c' },
     rows: [
       '................', '................', '................',
-      '..kkkkkkkkkkkk..',
-      '.kyhyhyhyhyhyyk.',
-      '.khyyhyyhyyhydk.',
-      '.kyhyhyyhyhyydk.',
-      '.kyyhyyhyyhyydk.',
-      '.khyhyhyhyhyydk.',
-      '.kyyhyyhyyhydyk.',
-      '.kyhyyhyhyyhydk.',
-      '.kddddddddddddk.',
-      '..kkkkkkkkkkkk..',
+      '..aaaaaaaaaaaa..',
+      '.ahnhnhhnhnhhna.',
+      '.anhnnhnnhnnhda.',
+      '.ahnhhnhhnhhnda.',
+      '.anhnnhnnhnnhda.',
+      '.ahnhhnhhnhhnda.',
+      '.anhnnhnnhnnhda.',
+      '.ahnhhnhhnhhnda.',
+      '.adddddddddddda.',
+      '..aaaaaaaaaaaa..',
       '................', '................', '................',
     ],
   },
-  // Ramyeon: a white bowl with a blue rim, red broth and springy noodles.
+  // Ramyeon: the pack's cream soup bowl, red broth, wavy golden noodles.
   ramyeon: {
-    pal: { k: OL, r: '#d8333f', o: '#f77622', y: '#f6d06a', w: '#fbf6ea', s: '#d9cfc0', b: '#3a6ab0' },
+    pal: { ...PACK, r: '#d8452f', R: '#a8321e', o: '#f07a3a', n: '#f6cf5a', N: '#d8a032' },
     rows: [
-      '................', '................', '................',
-      '..kkkkkkkkkkkk..',
-      '.krryyorryyorrk.',
-      'krryoyyrryoyyrrk',
-      'kryyrryyoyyrryrk',
-      'kkkkkkkkkkkkkkkk',
-      'kwwwwwwwwwwwwwsk',
-      '.kwbwwbwwbwwbsk.',
-      '.kwwwwwwwwwwwsk.',
-      '..kwwwwwwwwwsk..',
-      '...kssssssssk...',
-      '....kkkkkkkk....',
+      '................', '................',
+      '.....aaaaaa.....',
+      '...aabbccccaa...',
+      '..abRrroorrRca..',
+      '.abRnnrnnrnnRca.',
+      '.abnrNnrNnrNnca.',
+      '.adbRnrrnrrnRba.',
+      '.addbcccccccbba.',
+      '.abdddbbbbbbbca.',
+      '..abddbbbbbbca..',
+      '...abbcccccca...',
+      '....abbbccca....',
+      '.....aaaaaa.....',
       '................', '................',
     ],
   },
-  // Dips for mandu: a small dish of soy with sesame, and one of chili oil.
+  // Dips for mandu: a small cream dish of soy with sesame, and one of chili oil.
   soydip: {
-    pal: { k: OL, b: '#4a2a1a', h: '#8a5a32', e: '#f4e3c3', w: '#fbf6ea', s: '#d9cfc0' },
+    pal: { ...PACK, s: '#4a2a1a', h: '#7a4a2a', e: '#f4e3c3' },
     rows: [
       '................', '................', '................', '................', '................',
-      '....kkkkkkkk....',
-      '..kkbbbbbbbbkk..',
-      '.kwbhhbebbbebwk.',
-      '.kwbbebbbebbbwk.',
-      '.kwwbbbbbbbbwwk.',
-      '..kwwwwwwwwwwk..',
-      '...kswwwwwwsk...',
-      '....kkkkkkkk....',
+      '....aaaaaaaa....',
+      '..aabsssssscaa..',
+      '.abshhsesssesca.',
+      '.abssesssesssca.',
+      '.adbsssssssscba.',
+      '..addbcccccbba..',
+      '...abbbccccca...',
+      '....aaaaaaaa....',
       '................', '................', '................',
     ],
   },
   chilioil: {
-    pal: { k: OL, b: '#c8361e', h: '#f77622', e: '#5a1a10', w: '#fbf6ea', s: '#d9cfc0' },
+    pal: { ...PACK, s: '#c8361e', h: '#f77622', e: '#5a1a10' },
     rows: [
       '................', '................', '................', '................', '................',
-      '....kkkkkkkk....',
-      '..kkbbbbbbbbkk..',
-      '.kwbhhbebbbebwk.',
-      '.kwbbebbbebbbwk.',
-      '.kwwbbbbbbbbwwk.',
-      '..kwwwwwwwwwwk..',
-      '...kswwwwwwsk...',
-      '....kkkkkkkk....',
+      '....aaaaaaaa....',
+      '..aabsssssscaa..',
+      '.abshhsesssesca.',
+      '.abssesssesssca.',
+      '.adbsssssssscba.',
+      '..addbcccccbba..',
+      '...abbbccccca...',
+      '....aaaaaaaa....',
       '................', '................', '................',
     ],
   },

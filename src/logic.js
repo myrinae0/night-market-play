@@ -1,7 +1,7 @@
 // Pure game rules: seeded orders, cooking state machine, scoring, stars, unlocks.
 import {
   ITEMS, SAUCES, COOK, LEVELS, STAR_SHARES, LOOKS, PERSON_SHARE, WOK_ITEMS, STEAM_ITEMS, STATION_SAUCES, UPGRADES, GRILL_SLOTS,
-  TRAY_MAX, STATION_ORDER, STATION_KIND, sauceSuits, VIP_PAY, VIP_PATIENCE, SPECIAL_PAY, RUSH_PATIENCE, ENDLESS,
+  TRAY_MAX, STEAM_BASKETS, KETTLE_BOIL, STATION_ORDER, STATION_KIND, sauceSuits, VIP_PAY, VIP_PATIENCE, SPECIAL_PAY, RUSH_PATIENCE, ENDLESS,
 } from './data.js';
 import { SPIRITS, spiritsFor } from './spirits.js';
 
@@ -181,24 +181,48 @@ function rushOrder(levelN, r) {
   return { lines };
 }
 // ---------- endless nights ----------
-// Guest i waits endlessPace(i) as long as usual and the next one joins
-// endlessGap(i) seconds later: both shrink as the night goes on.
-export const endlessPace = (i) => Math.max(0.35, 1 - i * 0.014);
-export const endlessGap = (i) => Math.max(1.2, 3.5 - i * 0.06);
-export const endlessRush = (i) => i >= ENDLESS.rushEvery - ENDLESS.rushCount && i % ENDLESS.rushEvery >= ENDLESS.rushEvery - ENDLESS.rushCount;
+// The night heats up by a "step" e that grows with the guests who came
+// (guest i) and with the clock (one step every ENDLESS.ramp.secs seconds),
+// whichever is further: a fast player meets the pace by serving, a slow one
+// meets it as time passes. Everything ramps with e: patience, the gap before
+// the next guest joins, how often an order has a second cooked dish; VIPs and
+// rushes come closer together as the guests add up.
+export const endlessStep = (i, t = 0) => Math.max(i, t / ENDLESS.ramp.secs);
+// Guests wait endlessPace(e) as long as usual: pace0 at first, easing toward paceMin.
+export function endlessPace(e) {
+  const R = ENDLESS.ramp;
+  return R.paceMin + (R.pace0 - R.paceMin) * Math.exp(-e / R.paceScale);
+}
+// Seconds before the next guest joins the line.
+export const endlessGap = (e) => Math.max(ENDLESS.ramp.gapMin, ENDLESS.ramp.gap0 - e * ENDLESS.ramp.gapDrop);
+// The chance an order gets a second cooked dish.
+export const endlessExtra = (e) => Math.min(ENDLESS.ramp.extraMax, ENDLESS.ramp.extra0 + e * ENDLESS.ramp.extraPer);
+// Where the VIPs and the rushes fall: each one a little sooner after the last
+// (`first` guests in, then every `every` guests, one fewer each time, down to `min`).
+function spacing(i, { first, every, min }) {
+  const at = [];
+  for (let p = first, k = 0; p <= i; p += Math.max(min, every - k), k++) at.push(p);
+  return at;
+}
+export const endlessVip = (i) => spacing(i, ENDLESS.ramp.vip).includes(i);
+// A rush is `count` quick guests starting at each rush point.
+export function endlessRush(i) {
+  const R = ENDLESS.ramp.rush;
+  return spacing(i, R).some((p) => i >= p && i < p + R.count);
+}
 export const endlessSpecial = (seed) => ENDLESS.specials[(seed >>> 0) % ENDLESS.specials.length];
-// The order of guest i on an endless night (r: the night's random stream).
-// Later guests order a second cooked thing more often.
-export function endlessOrder(i, r, special) {
+// The order of guest i on an endless night (r: the night's random stream; e:
+// the night's step when they arrive, endlessStep).
+export function endlessOrder(i, r, special, e = i) {
   const def = ENDLESS;
   const rush = endlessRush(i);
   const o = rush ? rushOrder(def.n, r) : makeOrder(def.n, i, r);
-  if (!rush && r() < Math.min(0.5, 0.1 + i * 0.01)) o.lines.splice(1, 0, cookedLine(r, pick(r, cookedKinds(def))));
+  if (!rush && r() < endlessExtra(e)) o.lines.splice(1, 0, cookedLine(r, pick(r, cookedKinds(def))));
   o.look = pickLook(def.n, i, r, def);
   for (const l of o.lines) if (l.item === special) l.mul = SPECIAL_PAY;
-  if (i % def.vipEvery === def.vipEvery - 1) { o.vip = true; for (const l of o.lines) l.mul = (l.mul || 1) * VIP_PAY; }
+  if (!rush && endlessVip(i)) { o.vip = true; for (const l of o.lines) l.mul = (l.mul || 1) * VIP_PAY; }
   if (rush) o.rush = true;
-  o.patience = Math.round(patienceFor(o.lines, def.n, o.look, o.vip) * (rush ? RUSH_PATIENCE : 1) * endlessPace(i));
+  o.patience = Math.round(patienceFor(o.lines, def.n, o.look, o.vip) * (rush ? RUSH_PATIENCE : 1) * endlessPace(e));
   return o;
 }
 
@@ -380,10 +404,11 @@ export function scoreServe(order, tray, patienceFrac) {
   }
   const extras = tray.filter((_, j) => !used[j]);
   let paid = 0, mistakes = 0, perfects = 0;
+  const perfectItems = []; // which items were cooked in the gold (daily goals)
   for (const L of lines) {
     if (L.status === 'ok') {
       paid += linePrice(L.line);
-      if (tray[L.tray].perfect) perfects += 1;
+      if (tray[L.tray].perfect) { perfects += 1; perfectItems.push(L.line.item); }
     } else mistakes += 1;
   }
   mistakes += extras.length;
@@ -393,7 +418,7 @@ export function scoreServe(order, tray, patienceFrac) {
   const penalty = mistakes * MISTAKE_PENALTY;
   const okCount = lines.filter((L) => L.status === 'ok').length;
   const mood = allOk ? 'happy' : okCount > 0 ? 'meh' : 'angry';
-  return { coins: paid + tip - penalty, paid, tip, penalty, perfects, mistakes, lines, extras, mood };
+  return { coins: paid + tip - penalty, paid, tip, penalty, perfects, perfectItems, mistakes, lines, extras, mood };
 }
 
 // ---------- stars and unlocks ----------
@@ -432,6 +457,9 @@ export function upgradeEffects(owned = {}) {
     fryTime: COOK.fry.time * (o.fastfry ? 0.8 : 1),
     patienceMul: o.patience ? 1.2 : 1,
     perToss: COOK.wok.perToss * (o.wokfast ? 4 / 3 : 1),
+    steamBaskets: STEAM_BASKETS + (o.steam3 ? 1 : 0),
+    potBoil: COOK.pot.boil * (o.kettle ? KETTLE_BOIL : 1),
+    potStaysHot: !!o.kettle,
   };
 }
 // Cooking specs for a game with these upgrades (copies; COOK is never changed).
@@ -439,13 +467,16 @@ export function cookSpecs(owned) {
   const e = upgradeEffects(owned);
   return {
     grill: { ...COOK.grill }, fry: { ...COOK.fry, time: e.fryTime }, wok: { ...COOK.wok, perToss: e.perToss },
-    steam: { ...COOK.steam }, pot: { ...COOK.pot },
+    steam: { ...COOK.steam }, pot: { ...COOK.pot, boil: e.potBoil },
   };
 }
 export const upgradeById = (id) => UPGRADES.find((u) => u.id === id) || null;
+// Station upgrades show up in the shop once their station's level is open.
+export const upgradeOpen = (u, stars = {}) => !!u && (!u.from || isUnlocked(u.from, stars || {}));
+// purse: { wallet, upgrades, stars } (stars: levels' best stars, for `from`).
 export function canBuy(purse, id) {
   const u = upgradeById(id);
-  return !!u && !purse.upgrades[id] && purse.wallet >= u.cost;
+  return !!u && upgradeOpen(u, purse.stars) && !purse.upgrades[id] && purse.wallet >= u.cost;
 }
 // purse: { wallet, upgrades }. Returns true if bought.
 export function buyUpgrade(purse, id) {

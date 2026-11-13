@@ -1,12 +1,12 @@
 // Game state and player actions (no DOM). The renderer reads state; main.js
 // turns input (drags or taps) into these actions and plays the events they emit.
-import { ITEMS, SAUCES, FRY_BASKETS, STEAM_BASKETS, sauceStations, MOODS, TREAT, RUSH_GAP, COOK_TEXT } from './data.js';
+import { ITEMS, SAUCES, FRY_BASKETS, sauceStations, MOODS, TREAT, RUSH_GAP, COOK_TEXT } from './data.js';
 import {
   levelDef, makeOrders, newGrillItem, stepGrill, flipGrill, grillState, grillPerfect,
   newFryItem, stepFry, fryState, isPerfect, trayItem, canSauce, scoreServe, levelMax, starsFor,
   levelStations, stationStatus, newWokItem, stepWok, tossWok, wokState, wokPerfect, upgradeEffects, cookSpecs,
   newSteamItem, stepSteam, steamState, newPot, stepPot, potState, potBoiling,
-  rng, endlessOrder, endlessGap, endlessSpecial,
+  rng, endlessOrder, endlessGap, endlessSpecial, endlessStep,
 } from './logic.js';
 import { SPIRITS } from './spirits.js';
 
@@ -37,11 +37,12 @@ export function createGame(levelN, opts = {}) {
     grill: new Array(fx.grillSlots).fill(null),
     fryer: { bowl: null, baskets: new Array(FRY_BASKETS).fill(null) },
     wok: null,
-    steamer: new Array(STEAM_BASKETS).fill(null),
+    steamer: new Array(fx.steamBaskets).fill(null),
     pot: null,
     tray: [], trayMax: fx.trayMax,
     cook: cookSpecs(opts.upgrades),
     patienceMul: fx.patienceMul,
+    potStaysHot: fx.potStaysHot, // the copper kettle
     relTips: opts.relTips || {},
     moods: def.regulars ? opts.moods || {} : {},
     // Chimaek's treat (level 9 on): when she wants one, plain grilled beef
@@ -71,7 +72,7 @@ export function start(g) {
 
 // The next guest joins the line.
 function arrive(g) {
-  if (g.endless && g.custIdx + 1 >= g.orders.length) g.orders.push(endlessOrder(g.orders.length, g.rng, g.special));
+  if (g.endless && g.custIdx + 1 >= g.orders.length) g.orders.push(endlessOrder(g.orders.length, g.rng, g.special, endlessStep(g.orders.length, g.time)));
   if (g.custIdx + 1 >= g.orders.length) return false;
   g.custIdx += 1;
   const o = g.orders[g.custIdx];
@@ -90,7 +91,7 @@ function arrive(g) {
   g.customer = g.line[0];
   // The next guest joins sooner during a rush (and as an endless night goes on).
   const nextO = g.orders[g.custIdx + 1];
-  g.arriveT = (nextO && nextO.rush) || (g.endless && endlessRushNext(g)) ? RUSH_GAP : g.endless ? endlessGap(g.custIdx) : ARRIVE_GAP;
+  g.arriveT = (nextO && nextO.rush) || (g.endless && endlessRushNext(g)) ? RUSH_GAP : g.endless ? endlessGap(endlessStep(g.custIdx, g.time)) : ARRIVE_GAP;
   emit(g, 'sfx', { name: 'bell' });
   emit(g, 'arrive', { look: o.look, cid: c.id, col, regular: mood });
   if (o.rush && !(g.orders[g.custIdx - 1] || {}).rush) emit(g, 'rush');
@@ -464,7 +465,8 @@ export function potTake(g) {
   if (st === 'burnt') { g.pot = null; return toss(g, 'pot', 0); }
   const t = trayItem(pt.item, st, isPerfect(pt.p, g.cook.pot));
   if (!trayAdd(g, t)) return false;
-  g.pot = null;
+  // The copper kettle keeps the water on the boil for the next ramyeon.
+  g.pot = g.potStaysHot ? { ...newPot(), boil: 1 } : null;
   tookFeedback(g, t, 'STILL HARD!');
   return true;
 }
@@ -564,7 +566,7 @@ export function serve(g, idx = null) {
   g.served += 1;
   g.results.push(res);
   c.phase = 'leave'; c.t = 0; c.mood = res.mood; c.result = res;
-  emit(g, 'served', { result: res, look: c.look, cid: c.id, idx: g.line.indexOf(c) });
+  emit(g, 'served', { result: res, look: c.look, cid: c.id, idx: g.line.indexOf(c), vip: !!c.order.vip, regular: c.regular || null });
   emit(g, 'sfx', { name: res.mood === 'happy' ? 'serve' : 'meh' });
   return res;
 }

@@ -885,11 +885,13 @@ function wokPanel(app, ox, live) {
   }
 }
 
-// The steamer: two bamboo baskets over a pot of water. Food goes in a basket,
+// The steamer: two bamboo baskets (three with the upgrade) over a pot of water. Food goes in a basket,
 // a lid from the rack goes on (it only steams with the lid on), a flick up
 // lifts the lid, and the food is dragged to the tray.
 const BAMBOO = '#c9a46a', BAMBOO_D = '#9a7440', BAMBOO_L = '#e4c890';
-export const steamX = (i) => 8 + i * 84 + 40;
+export const steamPitch = (n = 2) => Math.floor(168 / n);
+export const steamX = (i, n = 2) => 6 + i * steamPitch(n) + Math.floor(steamPitch(n) / 2);
+const steamHalf = (n) => (n > 2 ? 24 : 30); // half a basket's width
 export function lidArt(x, y, w) { // a bamboo dome lid, w wide and 9 tall (+2 for the knob)
   x = Math.round(x); y = Math.round(y);
   R(x + w / 2 - 3, y - 2, 6, 2, C.ink); R(x + w / 2 - 2, y - 2, 4, 1, BAMBOO_D);
@@ -900,13 +902,13 @@ export function lidArt(x, y, w) { // a bamboo dome lid, w wide and 9 tall (+2 fo
   for (let i = x + 5; i < x + w - 4; i += 4) R(i, y + 3, 1, 4, BAMBOO_D);
   R(x, y + 7, w, 2, C.ink); R(x + 1, y + 7, w - 2, 1, BAMBOO_D);
 }
-function basketArt(mid, y, front) { // 60 x 20: the back rim, or the woven front
-  if (!front) { R(mid - 30, y, 60, 3, C.ink); R(mid - 29, y + 1, 58, 1, BAMBOO_D); return; }
-  R(mid - 30, y + 3, 60, 17, C.ink);
-  R(mid - 29, y + 3, 58, 16, BAMBOO);
-  R(mid - 29, y + 3, 58, 2, BAMBOO_L);
-  for (let k = y + 7; k < y + 19; k += 4) R(mid - 29, k, 58, 1, BAMBOO_D);
-  for (let i = mid - 26; i < mid + 28; i += 6) R(i, y + 8, 1, 10, mix(BAMBOO, BAMBOO_D, 0.5));
+function basketArt(mid, y, front, hw = 30) { // 2hw x 20: the back rim, or the woven front
+  if (!front) { R(mid - hw, y, hw * 2, 3, C.ink); R(mid - hw + 1, y + 1, hw * 2 - 2, 1, BAMBOO_D); return; }
+  R(mid - hw, y + 3, hw * 2, 17, C.ink);
+  R(mid - hw + 1, y + 3, hw * 2 - 2, 16, BAMBOO);
+  R(mid - hw + 1, y + 3, hw * 2 - 2, 2, BAMBOO_L);
+  for (let k = y + 7; k < y + 19; k += 4) R(mid - hw + 1, k, hw * 2 - 2, 1, BAMBOO_D);
+  for (let i = mid - hw + 4; i < mid + hw - 2; i += 6) R(i, y + 8, 1, 10, mix(BAMBOO, BAMBOO_D, 0.5));
 }
 function steamerPanel(app, ox, live) {
   const g = app.g, t = app.time, drag = !tapMode(app);
@@ -934,27 +936,28 @@ function steamerPanel(app, ox, live) {
     const f = Math.sin(t * 6 + x * 0.8) * 0.5 + 0.5;
     R(ox + x, fy + 64, 3, 3, mix(C.blueD, C.teal, f * 0.5));
   }
+  const n = g.steamer.length, pitch = steamPitch(n), hw = steamHalf(n);
   g.steamer.forEach((b, i) => {
-    const x0 = ox + 8 + i * 84, mid = x0 + 40;
-    const box = [x0 + 4, b0 + 2, 76, 82 + bx];
+    const mid = ox + steamX(i, n);
+    const box = [mid - Math.floor(pitch / 2) + 2, b0 + 2, pitch - 4, 82 + bx];
     if (live && drag) dst(...box, { kind: 'steamBasket', slot: i });
     const by = fy + 30;
-    basketArt(mid, by, false);
+    basketArt(mid, by, false, hw);
     const lidAge = b && b.lidT != null ? g.time - b.lidT : 9;
     if (b && !b.lid && !holding(app, 'steam', i)) drawItem(b.item, mid - 16, by - 20 - bounceAmt(app.fx, `steamer:${i}`), { p: b.p, scale: 2 });
-    basketArt(mid, by, true);
+    basketArt(mid, by, true, hw);
     if (b && b.lid) {
       const hop = lidAge < 0.2 ? -Math.round(Math.sin((lidAge / 0.2) * Math.PI) * 4) : 0;
-      lidArt(mid - 31, by - 8 + hop, 62);
+      lidArt(mid - hw - 1, by - 8 + hop, hw * 2 + 2);
       // steam leaks from under the lid
       const k = (t * 1.2 + i * 0.5) % 1;
-      R(mid - 34 - Math.round(k * 3), by - 2 - Math.round(k * 8), 2, 2, mix('#d8d8e8', '#1e1820', k));
-      R(mid + 32 + Math.round(k * 3), by - 3 - Math.round(k * 9), 2, 2, mix('#d8d8e8', '#1e1820', k));
+      R(mid - hw - 4 - Math.round(k * 3), by - 2 - Math.round(k * 8), 2, 2, mix('#d8d8e8', '#1e1820', k));
+      R(mid + hw + 2 + Math.round(k * 3), by - 3 - Math.round(k * 9), 2, 2, mix('#d8d8e8', '#1e1820', k));
     }
     if (!b) { text('EMPTY', mid, fy + 20, { color: C.greyDD, outline: null, align: 'center' }); return; }
     const st = steamState(b, g.cook.steam);
-    meter(x0 + 8, fy + 70, 64, 4, b.p, g.cook.steam, b.lid, t);
-    if (inGold(b.p, g.cook.steam) && !holding(app, 'steam', i)) sparkle(mid + 24, by - 18, t);
+    meter(mid - hw + 2, fy + 70, hw * 2 - 4, 4, b.p, g.cook.steam, b.lid, t);
+    if (inGold(b.p, g.cook.steam) && !holding(app, 'steam', i)) sparkle(mid + hw - 6, by - 18, t);
     if (drag) {
       if (b.lid) gestureLabels(mid, fy + 78, 'LIFT', null);
       else {
@@ -965,8 +968,9 @@ function steamerPanel(app, ox, live) {
       if (live) src(...box, { kind: 'steam', slot: i });
     } else {
       const takeCol = st === 'done' ? C.greenD : st === 'burnt' ? C.redD : C.steelD;
-      button(x0 + 6, fy + 79, 32, 12, b.lid ? 'LIFT' : 'LID', C.blueD, live && (() => G.steamLid(g, i)), `lid:${i}`);
-      button(x0 + 42, fy + 79, 32, 12, st === 'burnt' ? 'TOSS' : 'TAKE', takeCol, live && (() => G.steamTake(g, i)), `steamtake:${i}`);
+      const bw = Math.min(32, Math.floor((pitch - 8) / 2));
+      button(mid - bw - 2, fy + 79, bw, 12, b.lid ? 'LIFT' : 'LID', C.blueD, live && (() => G.steamLid(g, i)), `lid:${i}`);
+      button(mid + 2, fy + 79, bw, 12, st === 'burnt' ? 'TOSS' : 'TAKE', takeCol, live && (() => G.steamTake(g, i)), `steamtake:${i}`);
     }
   });
 }

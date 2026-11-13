@@ -10,5 +10,10 @@ Only the sprites this game uses are kept here, unmodified (16 x 16 PNG):
   steak_raw / steak_grilled (galbi), sausage, chicken_drumstick_raw (raw chicken),
   chicken_nuggets (fried chicken), honey_pot (honey), chili_pepper_green (chili),
   chili_pepper_red (yangnyeom), garlic (soy garlic), egg_fried (fried egg
-  topping), scallions (scallion topping), rice_ball (raw rice for fried rice).
-Cooking stages (raw, battered, pale, burnt) are recoloured copies made at run time.
+  topping), scallions (scallion topping), rice_ball (raw rice for fried rice),
+  dumpling (steamed mandu), mochi (the steamed bun; a red stamp is drawn on it
+  at run time). Both added Nov 13 2026 from the same food.zip (downloaded from
+  the page above as food_0.zip, the pack's current file; its other sprites are
+  byte-for-byte the files already here).
+Cooking stages (raw, battered, pale, burnt, raw dough, soggy) are recoloured copies
+made at run time.

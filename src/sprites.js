@@ -21,6 +21,15 @@ export function pixelCanvas(rows, pal, w = 16, h = rows.length) {
 // The code-drawn wok dishes join the image table (so they can be recoloured).
 export function registerFoodArt() {
   for (const [k, a] of Object.entries(FOOD_ART)) registerImage(k, pixelCanvas(mapRows(a.rows), a.pal));
+  // The steamed bun: the pack's mochi with a red stamp on top (a jjinppang).
+  const bun = makeCanvas(16, 16), bx = bun.getContext('2d');
+  bx.drawImage(img('bun_plain'), 0, 0);
+  bx.fillStyle = '#d8333f'; bx.fillRect(7, 5, 2, 2);
+  bx.fillStyle = '#9e2835'; bx.fillRect(8, 6, 1, 1);
+  registerImage('bun', bun);
+  // Raw dough: the steamed sprites recoloured matte and floury.
+  registerImage('mandu_raw', tinted('mandu', 'dough', 0.5));
+  registerImage('bun_raw', tinted('bun_plain', 'dough', 0.4));
 }
 
 // ---------- menu items ----------

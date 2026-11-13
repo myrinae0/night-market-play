@@ -6,7 +6,7 @@ Each pack's license file sits next to its files in `assets/`.
 
 | Files | What they are in the game | Pack and author | Source | License |
 |---|---|---|---|---|
-| `assets/food/*.png` (15 sprites, 16 x 16, unmodified) | Soda, kimbap, egg toast, galbi (raw and grilled), sausage, raw chicken, fried chicken, raw rice (rice ball), the sauces: honey, chili, yangnyeom (red chili), soy garlic (garlic), and the wok toppings: fried egg, scallion | "16x16 Food" by ARoachIFoundOnMyPillow | <https://opengameart.org/content/16x16-food> | CC0 1.0 (`assets/food/LICENSE.txt`) |
+| `assets/food/*.png` (17 sprites, 16 x 16, unmodified) | Soda, kimbap, egg toast, galbi (raw and grilled), sausage, raw chicken, fried chicken, raw rice (rice ball), the sauces: honey, chili, yangnyeom (red chili), soy garlic (garlic), the wok toppings: fried egg, scallion, and (since Nov 13) steamed mandu (dumpling) and the steamed bun (mochi, with a red stamp drawn on at run time) | "16x16 Food" by ARoachIFoundOnMyPillow | <https://opengameart.org/content/16x16-food> | CC0 1.0 (`assets/food/LICENSE.txt`) |
 | `assets/kenney-rpg-urban/tilemap_packed.png` (unmodified sheet; the front-facing frame of its six people is used) | The normal people who now and then come to the stall | "RPG Urban Pack" by Kenney (www.kenney.nl) | <https://opengameart.org/content/rpg-urban-pack> (also <https://kenney.nl/assets/rpg-urban-pack>) | CC0 1.0 (`assets/kenney-rpg-urban/License.txt`, Kenney's original) |
 
 Made for this game (MIT, see LICENSE):
@@ -22,15 +22,20 @@ Made for this game (MIT, see LICENSE):
 - **The wok dishes** (`src/art.js`): raw rice cakes, tteokbokki, raw glass
   noodles, japchae and fried rice, drawn in code to match the food pack where it
   has no sprite.
-- **Part 2 food** (`src/art.js`): raw and steamed mandu, raw and steamed buns,
-  a block of instant ramyeon and a bowl of ramyeon, the soy dip and chili oil
-  dishes, and Chimaek's plain beef (raw and grilled), drawn in code in the same
-  style (the CC0 pack has no sprites for these).
+- **Part 2 food** (`src/art.js`): a block of instant ramyeon, a bowl of
+  ramyeon (drawn on the food pack's own soup bowl shape and colours), the soy
+  dip and chili oil dishes, and Chimaek's plain beef (raw and grilled), drawn in
+  code in the pack's style. The pack has no ramyeon, dips or plain beef; no
+  CC0 or CC-BY 16 x 16 sprite for them was found (searched Nov 13: OpenGameArt,
+  itch.io free packs, Kenney). Mandu and buns now use the pack's own sprites;
+  their raw dough is a recolour made at run time.
 - Chimaek the Shiba (a 16 x 16 sprite in `src/sprites.js`, with her back turned
   when she refuses a treat), the barley tea and beer sprites, the market scene,
   rain, the festival moon and lanterns, snow and frost, stall, stations, wok,
   bamboo steamer, lids, kettle, noodle pot, UI, icons and `icon.svg`.
-- Cooking stages (raw, battered, pale, burnt, soggy) are per-pixel recolours of the food
+- Ttuk, the clay pot imp, was redrawn on Nov 13 so he reads at 4x (lid with a
+  knob, glaze band, white eyes under heavy brows, a frown, stub feet).
+- Cooking stages (raw, battered, pale, burnt, soggy, raw dough) are per-pixel recolours of the food
   sprites made at run time (`src/assets.js`).
 - Bitmap fonts (`src/font.js`, with `<` and `=` added): copied from Chris Llaga's
   Crowd Runner (MIT).
@@ -41,5 +46,7 @@ Made for this game (MIT, see LICENSE):
   STORY.md).
 
 Rejected while sourcing: "64 16x16 food sprites" on OpenGameArt (uploaded by a third
-party from a paid itch.io pack, so the CC0 label is doubtful). No art from commercial
+party from a paid itch.io pack, so the CC0 label is doubtful). "Pixel Food" by ghostpixxells on
+itch.io (CC0, has dumplings and ramen, but 32 x 32: twice the pixel density of
+everything else, so it would not match at the game's whole-number scale). No art from commercial
 games or films is used.

@@ -9,6 +9,8 @@ export const FOOD_FILES = {
   chicken_raw: 'chicken_drumstick_raw', chicken: 'chicken_nuggets',
   honey: 'honey_pot', spicy: 'chili_pepper_green', yangnyeom: 'chili_pepper_red', soygarlic: 'garlic',
   egg: 'egg_fried', scallion: 'scallions', rice_raw: 'rice_ball',
+  // part 2: steamed mandu and the steamed bun (its red stamp is added at run time)
+  mandu: 'dumpling', bun_plain: 'mochi',
 };
 // assets/kenney-rpg-urban: Kenney's RPG Urban Pack (CC0), 16 x 16 tiles, no spacing.
 export const URBAN = { file: 'assets/kenney-rpg-urban/tilemap_packed.png', cols: 27, tile: 16 };
@@ -34,7 +36,7 @@ export function loadAssets() {
   return Promise.all(jobs);
 }
 
-const TINTS = { raw: '#f2a49a', batter: '#f6e2b0', pale: '#f4ecd8', burnt: '#2a1712', soggy: '#a8a49a' };
+const TINTS = { raw: '#f2a49a', batter: '#f6e2b0', pale: '#f4ecd8', burnt: '#2a1712', soggy: '#a8a49a', dough: '#e2ddd2' };
 const tintCache = new Map();
 // A copy of sprite `name` with every pixel moved `amount` (0..1, in 0.1 steps)
 // toward the tint colour. Alpha is kept, so outlines and shapes don't change.

@@ -238,10 +238,22 @@ export const LEVELS = [
 // three, guests without end; they come faster and wait less as the night
 // goes on (logic.js: endlessPace, endlessGap). Three walk-outs end it. The
 // best night (coins) is saved. No story scenes.
+// The ramp (logic.js): the night's step e = max(guests so far, seconds / secs).
+// Patience eases from 1 toward paceMin (exp(-e / paceScale)); the gap before
+// the next guest shrinks from gap0 by gapDrop a step down to gapMin; a second
+// cooked dish gets likelier (extra0 + e * extraPer, at most extraMax); VIPs
+// and rushes (count quick guests) come first at guest `first`, then every
+// `every` guests, one sooner each time, down to `min`.
+// Tuned Nov 13 with the test autopilots (tools/endless-sim.js): see README.
 export const ENDLESS = {
   n: 99, endless: true, title: 'Endless nights', tag: 'BEST SCORE', kind: 'endless', queue: 3, strikes: 3,
   regulars: true, treat: true, stations: STATION_ORDER, customers: 0, seed: 9001,
-  specials: ['ramyeon', 'mandu', 'chicken', 'tteokbokki', 'galbi', 'japchae'], vipEvery: 9, rushEvery: 15, rushCount: 3,
+  specials: ['ramyeon', 'mandu', 'chicken', 'tteokbokki', 'galbi', 'japchae'],
+  ramp: {
+    secs: 8, pace0: 0.85, paceMin: 0.35, paceScale: 70, gap0: 3.5, gapDrop: 0.05, gapMin: 1.2,
+    extra0: 0.1, extraPer: 0.01, extraMax: 0.5,
+    vip: { first: 8, every: 9, min: 5 }, rush: { first: 12, every: 15, min: 9, count: 3 },
+  },
   intro: {
     station: 'counter',
     heading: 'ENDLESS NIGHTS',
@@ -283,9 +295,12 @@ export const PERSON_SHARE = 0.22; // now and then a normal person comes by
 
 // Stall upgrades, bought once each between nights with saved coins.
 // Coins carry over from every night (the purse), so prices are set against a
-// whole run. A flawless run of levels 1-6 earns about 1030 coins and all five
-// upgrades cost 1540, so a good player (about 85% of the best) buys the
-// first one or two along the way and the last one around levels 8 to 10.
+// whole run. A flawless run of levels 1-6 earns about 1080 coins and the five
+// part 1 upgrades cost 1540, so a good player (about 85% of the best) buys
+// the first one or two along the way and the last of those around levels 8
+// to 10. The steamer and noodle pot upgrades (`from`: they show up in the
+// shop once their station's level is open) bring the total to 2280: a good
+// player has bought everything around levels 12 to 13.
 // Levels are tuned to be beatable with none; with all of them a careless
 // night (no sauces) still earns only one star (tests/upgrades.test.js).
 export const UPGRADES = [
@@ -294,7 +309,12 @@ export const UPGRADES = [
   { id: 'fastfry', name: 'HOTTER OIL', desc: 'CHICKEN FRIES 20% FASTER', cost: 240 },
   { id: 'patience', name: 'PAPER LANTERNS', desc: 'GUESTS WAIT 20% LONGER', cost: 440 },
   { id: 'wokfast', name: 'SEASONED WOK', desc: 'DISHES NEED FEWER TOSSES', cost: 240 },
+  { id: 'steam3', name: '3RD STEAM BASKET', desc: 'STEAM THREE AT ONCE', cost: 380, from: 7, station: 'steamer' },
+  { id: 'kettle', name: 'COPPER KETTLE', desc: 'FAST BOIL, THE POT STAYS HOT', cost: 360, from: 10, station: 'pot' },
 ];
+// The copper kettle: water boils this much faster, and after you take the
+// noodles the pot keeps its boiling water for the next ramyeon.
+export const KETTLE_BOIL = 1 / 3;
 // The shop opens after you clear this level (then between every night after it).
 export const SHOP_FROM_LEVEL = 5;
 
@@ -304,7 +324,7 @@ export const RESET_TEXT = {
   button: 'RESET PROGRESS',
   note: 'YOUR SETTINGS ARE KEPT',
   title: 'RESET PROGRESS?',
-  body: 'THIS ERASES YOUR LEVELS, STARS, PURSE, UPGRADES, STORY AND MEMORIES.',
+  body: 'THIS ERASES YOUR LEVELS, STARS, PURSE, UPGRADES, GOALS, BADGES, STORY AND MEMORIES.',
   kept: 'SOUND AND CONTROL SETTINGS STAY.',
   undo: 'IT CANNOT BE UNDONE.',
   keep: 'KEEP',
