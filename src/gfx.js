@@ -1,8 +1,11 @@
 // Low-res drawing helpers: palette, rects, cached bitmap text.
 import { textMask, textWidth } from './font.js';
 
-export const W = 180;
-export const H = 390;
+// The logical canvas size in art pixels. It changes with the viewport
+// (layout.js); importers see the live values.
+export let W = 180;
+export let H = 390;
+export function setSize(w, h) { W = w; H = h; }
 
 // Palette (picked for this game; night market warm lights on cool night blues).
 export const C = {

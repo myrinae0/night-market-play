@@ -25,25 +25,33 @@ import * as G from './game.js';
 
 export const TAP_DIST = 5; // art px: less movement than this is a tap
 export const DRAG_DIST = 3; // art px before the item lifts off under the finger
-export const FLICK_MS = 380; // a flick is quick...
-export const FLICK_UP = 9; // ...and at least this far up (art px)
+export const FLICK_MS = 520; // a flick is quick...
+export const FLICK_UP = 6; // ...and at least this far up (art px), more up than sideways
 export const SWIPE_DIST = 22;
 
 // What a finished gesture was. dx, dy in art px (up is negative), ms duration.
 export function classify(dx, dy, ms) {
   const dist = Math.hypot(dx, dy);
   if (dist < TAP_DIST) return 'tap';
-  if (dy <= -FLICK_UP && -dy > Math.abs(dx) * 1.1 && ms <= FLICK_MS) return 'flick';
+  if (dy <= -FLICK_UP && -dy > Math.abs(dx) * 0.9 && ms <= FLICK_MS) return 'flick';
   if (Math.abs(dx) > SWIPE_DIST && Math.abs(dx) > Math.abs(dy) * 1.4) return dx < 0 ? 'swipeLeft' : 'swipeRight';
   return 'drag';
 }
 
-// Sources that react to a flick up (and what they do).
+// Sources that react to a flick up (and what they do). A flick on SERVE
+// hands the tray to the guest whose order it matches.
 export function flickAction(p) {
   if (p.kind === 'grill') return 'flip';
   if (p.kind === 'wok') return 'toss';
   if (p.kind === 'steam') return 'lift';
+  if (p.kind === 'serve') return 'serve';
   return null;
+}
+// What a quick tap does to a source (drag controls): the same as a flick for
+// cooking food (flip, toss, lift a lid that is on) and SERVE; null shows a hint.
+export function tapAction(g, p) {
+  if (p.kind === 'steam') return g && g.steamer[p.slot]?.lid ? 'lift' : null;
+  return flickAction(p);
 }
 
 const trayRoom = (g) => g.tray.length < g.trayMax;
@@ -145,17 +153,17 @@ export function dragHint(p) {
       return k === 'grill' ? 'DRAG IT ONTO THE GRILL' : k === 'fry' ? 'DRAG IT INTO THE BATTER' : k === 'steam' ? 'DRAG IT INTO A BASKET'
         : k === 'pot' ? 'DRAG IT INTO THE POT' : 'DRAG IT INTO THE WOK';
     }
-    case 'grill': return 'FLICK UP TO FLIP IT';
+    case 'grill': return 'TAP IT TO FLIP IT';
     case 'bowl': return 'DRAG IT INTO A BASKET';
     case 'basket': return 'DRAG IT TO THE TRAY';
-    case 'wok': return 'FLICK UP TO TOSS';
+    case 'wok': return 'TAP IT TO TOSS';
     case 'lid': return 'DRAG A LID ONTO A BASKET';
-    case 'steam': return 'FLICK UP TO LIFT THE LID';
+    case 'steam': return 'DRAG IT TO THE TRAY';
     case 'kettle': return 'DRAG IT ONTO THE POT';
     case 'pot': return 'DRAG IT TO THE TRAY';
     case 'sauce': return 'DRAG IT ONTO THE FOOD';
     case 'tray': return 'DRAG TO THE BIN TO TOSS';
-    case 'serve': return 'DRAG THE TRAY TO A GUEST';
+    case 'serve': return 'TAP SERVE TO HAND IT OVER';
     default: return '';
   }
 }
@@ -175,13 +183,13 @@ export function missHint(g, p, t) {
       if (k === 'pot') return !g.pot ? 'ADD WATER FIRST' : g.pot.item ? 'THE POT IS BUSY' : !potBoiling(g.pot) ? 'WAIT FOR THE BOIL' : 'DROP IT IN THE POT';
       return g.wok ? 'THE WOK IS BUSY' : 'DROP IT IN THE WOK';
     }
-    case 'steam': return g.steamer[p.slot]?.lid ? 'FLICK UP TO LIFT THE LID' : 'DROP IT ON THE TRAY';
+    case 'steam': return g.steamer[p.slot]?.lid ? 'TAP IT TO LIFT THE LID' : 'DROP IT ON THE TRAY';
     case 'lid': return t && t.kind === 'steamBasket' ? (g.steamer[t.slot] ? 'IT HAS A LID' : 'PUT FOOD IN FIRST') : 'DROP IT ON A BASKET';
     case 'kettle': return g.pot ? 'THERE IS WATER IN IT' : 'DROP IT ON THE POT';
     case 'grill': case 'basket': case 'wok': case 'pot': return 'DROP IT ON THE TRAY';
     case 'bowl': return g.fryer.baskets.every(Boolean) ? 'BASKETS FULL' : 'DROP IT IN A BASKET';
     case 'sauce': return g.tray.some((it) => canSauce(it, p.id)) ? 'DROP IT ON THE FOOD' : G.sauceHint(g, p.id);
-    case 'serve': return G.waiting(g).length ? 'DROP THE TRAY ON A GUEST' : null;
+    case 'serve': return G.waiting(g).length ? 'TAP SERVE, OR DROP IT ON A GUEST' : null;
     default: return null;
   }
 }

@@ -1,16 +1,18 @@
 // Boot, game loop, input (drag, flick, swipe, tap, keys), screen flow, save and
 // sound hookup.
-import { W, H, C, setCtx } from './gfx.js';
+import { W, H, C, setCtx, setSize } from './gfx.js';
 import { LEVELS, COOK, ITEMS, SHOP_FROM_LEVEL } from './data.js';
 import { grillState, fryState, levelDef, buyUpgrade, upgradeById, nightPay, scoreServe, potBoiling, isUnlocked } from './logic.js';
 import * as G from './game.js';
-import { TABS_Y, PANEL_Y, tapMode, guestX, grillSlotX, basketX, WOK_CX, steamX, POT_CX } from './render.js';
-import { drawFrame, SLIDER, lineTyped, choiceBox, dlgLineH, defaultTitlePage, TITLE_PAGES, logPages } from './screens.js';
+import { PANEL_Y, COUNTER_Y, tapMode, guestX, grillSlotX, basketX, WOK_CX, steamX, POT_CX } from './render.js';
+import { drawFrame, lineTyped, choicesH, choiceBox, dlgLineH, defaultTitlePage, TITLE_PAGES, logPages } from './screens.js';
+import { computeView, setLayout, LAY } from './layout.js';
+import { designToScreen } from './ui.js';
 import { createFx, updateFx, spawn, floatText, coinBurst, bounce, toast } from './fx.js';
 import * as audio from './audio.js';
 import { loadAssets } from './assets.js';
 import { setCustomerScale, registerFoodArt } from './sprites.js';
-import { classify, flickAction, accepts, drop, findTarget, offTray, dragHint, missHint, DRAG_DIST } from './drag.js';
+import { classify, flickAction, tapAction, accepts, drop, findTarget, offTray, dragHint, missHint, DRAG_DIST } from './drag.js';
 import { SPIRITS, PEOPLE_QUIPS, REGULAR_LINES, isSpirit } from './spirits.js';
 import {
   sceneFor, sceneById, afterSceneFor, startScene, advance, choose, skip, finishScene, relTips, unlockMemory,
@@ -32,30 +34,51 @@ function writeSave(s) {
 }
 
 // ---------- canvas ----------
+// The buffer covers the whole viewport at a whole-number scale (layout.js);
+// the game draws in its W x H content area (inside the safe area) and the
+// edges past it repeat its outermost pixels, so there are no black bars.
 const screen = document.getElementById('game');
 const sctx = screen.getContext('2d');
 const buf = document.createElement('canvas');
-buf.width = W; buf.height = H;
 const bctx = buf.getContext('2d');
-bctx.imageSmoothingEnabled = false;
 setCtx(bctx);
+let view = null;
 let scale = 1;
 
+// Safe-area insets (notches, the home bar), in CSS px.
+const probe = document.createElement('div');
+probe.style.cssText = 'position:fixed;left:0;top:0;width:0;height:0;visibility:hidden;pointer-events:none;'
+  + 'padding:env(safe-area-inset-top,0px) env(safe-area-inset-right,0px) env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px)';
+document.body.appendChild(probe);
+function insets() {
+  const cs = getComputedStyle(probe);
+  return { top: parseFloat(cs.paddingTop) || 0, right: parseFloat(cs.paddingRight) || 0, bottom: parseFloat(cs.paddingBottom) || 0, left: parseFloat(cs.paddingLeft) || 0 };
+}
+let sizeKey = '';
 function resize() {
   const dpr = window.devicePixelRatio || 1;
   const vw = window.innerWidth, vh = window.innerHeight;
-  // Whole-number scale in device pixels keeps every art pixel the same size.
-  const s = Math.max(1, Math.floor(Math.min((vw * dpr) / W, (vh * dpr) / H)));
-  scale = s;
-  screen.width = W * s; screen.height = H * s;
-  const cssW = (W * s) / dpr, cssH = (H * s) / dpr;
-  screen.style.width = `${cssW}px`; screen.style.height = `${cssH}px`;
-  // Snap the canvas to whole device pixels so the browser never resamples it.
-  const offX = Math.floor(((vw - cssW) / 2) * dpr) / dpr, offY = Math.floor(((vh - cssH) / 2) * dpr) / dpr;
-  screen.style.left = `${offX}px`; screen.style.top = `${offY}px`;
+  const ins = insets();
+  const key = [vw, vh, dpr, ins.top, ins.right, ins.bottom, ins.left].join();
+  if (key === sizeKey) return false;
+  sizeKey = key;
+  view = computeView(vw, vh, dpr, ins);
+  scale = view.s;
+  setSize(view.W, view.H);
+  setLayout(view.W, view.H, view.mode);
+  buf.width = view.bw; buf.height = view.bh;
+  bctx.imageSmoothingEnabled = false;
+  screen.width = view.bw * view.s; screen.height = view.bh * view.s;
+  screen.style.width = `${view.cssW}px`; screen.style.height = `${view.cssH}px`;
+  screen.style.left = `${view.left}px`; screen.style.top = `${view.top}px`;
   sctx.imageSmoothingEnabled = false;
+  return true;
 }
-window.addEventListener('resize', resize);
+// After a resize nothing stays in the player's hand (the targets moved).
+function relayout() { if (resize()) { app.drag = null; app.snap = null; app.slider = null; } }
+window.addEventListener('resize', relayout);
+window.addEventListener('orientationchange', relayout);
+if (window.visualViewport) window.visualViewport.addEventListener('resize', relayout);
 resize();
 
 // ---------- app ----------
@@ -174,7 +197,7 @@ const app = {
   playAfter(sc) { app.startDialogue(sc, false, () => { app.toTitle(); app.titlePage = defaultTitlePage(save.stars); }); },
   startDialogue(sc, replay, then) {
     app.dlg = startScene(sc, save.story, { replay });
-    app.dlgT = 0; app.dlgThen = then; app.dlgH = 0;
+    app.dlgT = 0; app.dlgThen = then; app.dlgH = 0; app.dlgCH = 0;
     app.screen = 'scene'; app.g = null;
     audio.setRain(!!levelDef(sc.level)?.rain);
   },
@@ -219,7 +242,7 @@ function handleEvents() {
     if (e.type === 'sfx') audio.play(e.name);
     else if (e.type === 'toast') toast(app.fx, e.text, e.good);
     else if (e.type === 'tray') bounce(app.fx, `tray:${e.index}`);
-    else if (e.type === 'sauced') { bounce(app.fx, `tray:${e.index}`); spawn(app.fx, 'world', 18 + e.index * 30, 330, 'drip', 6); }
+    else if (e.type === 'sauced') { bounce(app.fx, `tray:${e.index}`); spawn(app.fx, 'tray', 18 + e.index * 30, 330, 'drip', 6); }
     else if (e.type === 'place') {
       const x = slotX(g, e.station, e.slot);
       spawn(app.fx, e.station, x, PANEL_Y + 56, e.station === 'fryer' ? 'bubble' : 'spark', 10);
@@ -255,7 +278,8 @@ function handleEvents() {
       const r = e.result;
       floatText(app.fx, x, 70, `${r.coins >= 0 ? '+' : ''}${r.coins}`, r.coins >= 0 ? C.yellow : C.red, true);
       if (r.tip > 0) floatText(app.fx, x, 82, `TIP +${r.tip}`, C.greenL);
-      if (r.coins > 0) coinBurst(app.fx, x, 90, Math.min(12, Math.ceil(r.coins / 2)), 34, 3);
+      // floats live in the street's design coordinates; the coins fly to the HUD counter
+      if (r.coins > 0) coinBurst(app.fx, x, 90, Math.min(12, Math.ceil(r.coins / 2)), 34 - LAY.scene.d, 3 - LAY.scene.dy);
       if (isSpirit(e.look)) { recordService(save.story, e.look, r.mood === 'happy'); writeSave(save); }
       if (r.treat) floatText(app.fx, x, 94, `DOG BONUS +${r.treat}`, C.greenL);
       if (r.mood === 'happy') {
@@ -277,14 +301,14 @@ function handleEvents() {
       app.newBest = false;
       if (e.endless) { // the best endless night is kept
         app.newBest = g.coins > (save.endlessBest || 0);
-        if (app.newBest) { save.endlessBest = g.coins; spawn(app.fx, 'top', 90, 100, 'confetti', 40); audio.sting(); }
+        if (app.newBest) { save.endlessBest = g.coins; spawn(app.fx, 'top', Math.floor(W / 2), Math.floor(H / 2) - 90, 'confetti', 40); audio.sting(); }
         writeSave(save);
         continue;
       }
       const best = save.stars[g.level] || 0;
       if (e.stars > best) save.stars[g.level] = e.stars;
       writeSave(save);
-      if (e.stars === 3) spawn(app.fx, 'top', 90, 100, 'confetti', 40);
+      if (e.stars === 3) spawn(app.fx, 'top', Math.floor(W / 2), Math.floor(H / 2) - 90, 'confetti', 40);
       if (e.stars > 0) audio.sting();
     }
   }
@@ -341,6 +365,9 @@ function step(dt) {
     app.dlgT += dt;
     const want = app.dlg ? dlgLineH(app.dlg.cur) : 0; // the dialogue box eases to fit the line
     app.dlgH = app.dlgH ? app.dlgH + (want - app.dlgH) * Math.min(1, dt * 18) : want;
+    const wantC = choicesH(app.dlg, lineTyped(app)); // room for the answers opens under the box
+    app.dlgCH = (app.dlgCH || 0) + (wantC - (app.dlgCH || 0)) * Math.min(1, dt * 18);
+    if (Math.abs(wantC - app.dlgCH) < 0.5) app.dlgCH = wantC;
   }
   if (app.g) {
     G.update(app.g, dt);
@@ -358,16 +385,29 @@ function step(dt) {
   }
 }
 
+// Fills the buffer outside the content area with the content's edge pixels.
+function extendEdges() {
+  const { x0, y0, W: w, H: h, bw, bh } = view;
+  bctx.setTransform(1, 0, 0, 1, 0, 0);
+  const right = bw - x0 - w, bottom = bh - y0 - h;
+  if (y0 > 0) bctx.drawImage(buf, x0, y0, w, 1, x0, 0, w, y0);
+  if (bottom > 0) bctx.drawImage(buf, x0, y0 + h - 1, w, 1, x0, y0 + h, w, bottom);
+  if (x0 > 0) bctx.drawImage(buf, x0, 0, 1, bh, 0, 0, x0, bh);
+  if (right > 0) bctx.drawImage(buf, x0 + w - 1, 0, 1, bh, x0 + w, 0, right, bh);
+}
 function draw() {
+  bctx.setTransform(1, 0, 0, 1, view.x0, view.y0);
   app.reg = drawFrame(app);
+  extendEdges();
   sctx.save();
   if (app.fx.shake > 0) sctx.translate(Math.round((Math.random() - 0.5) * 2) * scale, 0);
-  sctx.drawImage(buf, 0, 0, W * scale, H * scale);
+  sctx.drawImage(buf, 0, 0, view.bw * scale, view.bh * scale);
   sctx.restore();
 }
 
 let lastT = performance.now();
 function frame(now) {
+  relayout(); // cheap when nothing changed; catches a fold or unfold the events miss
   const dt = Math.min(0.05, (now - lastT) / 1000);
   lastT = now;
   if (!app.frozen && !app.settings) step(dt);
@@ -376,10 +416,16 @@ function frame(now) {
 }
 
 // ---------- input ----------
+// CSS px -> the game's coordinates (art px in the content area), and back.
 function toBuf(e) {
   const r = screen.getBoundingClientRect();
-  return { x: ((e.clientX - r.left) / r.width) * W, y: ((e.clientY - r.top) / r.height) * H };
+  return { x: ((e.clientX - r.left) / r.width) * view.bw - view.x0, y: ((e.clientY - r.top) / r.height) * view.bh - view.y0 };
 }
+function toCss(x, y) {
+  const r = screen.getBoundingClientRect();
+  return { x: r.left + ((x + view.x0) / view.bw) * r.width, y: r.top + ((y + view.y0) / view.bh) * r.height };
+}
+const inWork = (p) => { const k = LAY.work; return p.x >= k.x && p.x < k.x + k.w && p.y >= k.y && p.y < k.y + k.h; };
 function hitAt(p) {
   const hits = app.reg.hits;
   for (let i = hits.length - 1; i >= 0; i--) {
@@ -394,7 +440,10 @@ const canDrag = () => app.screen === 'game' && app.g && app.g.phase === 'play' &
 
 // A volume slider grabbed in the settings panel follows the finger; the drag
 // never reaches the game (no swipes, no taps) and is saved on release.
-const sliderValue = (x) => (x - SLIDER.x) / SLIDER.w;
+function sliderValue(x) {
+  const h = app.reg.hits.find((r) => r.tag === `slider:${app.slider.key}`);
+  return h ? (x - (h.x + 10)) / (h.w - 20) : 0;
+}
 function endSlider() {
   if (app.slider.key === 'sfx') audio.play('grab'); // a sample at the new level
   app.slider = null;
@@ -406,22 +455,31 @@ function finishDrag(d, p, now) {
   const g = app.g;
   if (!g || g.phase !== 'play') return;
   const kind = classify(p.x - d.x0, p.y - d.y0, now - d.t0);
-  if (kind === 'tap') { toast(app.fx, dragHint(d.payload)); audio.play('tap'); return; }
-  const fa = flickAction(d.payload);
-  if (kind === 'flick' && fa) {
-    if (fa === 'flip') G.grillFlip(g, d.payload.slot);
-    else if (fa === 'lift') { if (!G.steamLidOff(g, d.payload.slot)) toast(app.fx, 'DRAG IT TO THE TRAY'); }
+  // A flip, toss, lid lift or serve, from a quick tap or a flick up.
+  const act = (a) => {
+    if (a === 'flip') G.grillFlip(g, d.payload.slot);
+    else if (a === 'lift') { if (!G.steamLidOff(g, d.payload.slot)) toast(app.fx, 'DRAG IT TO THE TRAY'); }
+    else if (a === 'serve') G.serveAuto(g);
     else G.wokToss(g);
+  };
+  if (kind === 'tap') {
+    const ta = tapAction(g, d.payload);
+    if (ta) act(ta);
+    else { toast(app.fx, dragHint(d.payload)); audio.play('tap'); }
     return;
   }
+  // A drop on something that takes it wins (a quick drag up to Chimaek or a
+  // guest is not a flick); then a flick up.
   const tg = findTarget(app.reg.targets.filter((r) => accepts(g, d.payload, r.target)), p.x, p.y);
   if (tg && drop(g, d.payload, tg.target)) {
     if (d.payload.kind === 'ready' || d.payload.kind === 'bin') bounce(app.fx, d.payload.kind === 'ready' ? `ready:${d.payload.item}` : `bin:${d.payload.item}`);
     return;
   }
+  const fa = flickAction(d.payload);
+  if (kind === 'flick' && fa) { act(fa); return; }
   if (d.payload.kind === 'tray' && app.reg.trayBox && offTray(app.reg.trayBox, p.x, p.y)) { G.trashTray(g, d.payload.index); return; }
   // A quick sideways swipe that started on food (and landed nowhere) still switches stations.
-  if ((kind === 'swipeLeft' || kind === 'swipeRight') && now - d.t0 < 300 && d.y0 >= TABS_Y) {
+  if ((kind === 'swipeLeft' || kind === 'swipeRight') && now - d.t0 < 300 && inWork({ x: d.x0, y: d.y0 })) {
     app.switchStation(kind === 'swipeLeft' ? 1 : -1);
     return;
   }
@@ -486,7 +544,7 @@ window.addEventListener('pointerup', (e) => {
   const start = down;
   down = null;
   const g = app.g;
-  if (!app.settings && app.screen === 'game' && g && g.phase !== 'end' && start.y >= TABS_Y && Math.abs(dx) > 22 && Math.abs(dx) > Math.abs(dy) * 1.4) {
+  if (!app.settings && app.screen === 'game' && g && g.phase !== 'end' && inWork(start) && Math.abs(dx) > 22 && Math.abs(dx) > Math.abs(dy) * 1.4) {
     app.switchStation(dx < 0 ? 1 : -1); // swipe left shows the station to the right
     return;
   }
@@ -587,8 +645,11 @@ function play(n, opts = {}) {
   if (opts.upgrades) save.upgrades = opts.upgrades;
   app.newLevel(n); G.start(app.g); waitForGuest();
 }
-// Puts something in the player's hand at (x, y), as if dragged there.
-function holdAt(payload, x, y) {
+// A design point (180 x 390) on the current screen, in game coordinates.
+function at(x, y) { app.reg = drawFrame(app); return designToScreen(x, y, app.reg.frames); }
+// Puts something in the player's hand at design point (x, y), as if dragged there.
+function holdAt(payload, dx, dy) {
+  const { x, y } = at(dx, dy);
   app.drag = { payload, box: { x, y, w: 1, h: 1 }, x0: x, y0: y + 40, x, y, t0: 0, id: -1, lifted: true };
   app.pointer = { x, y };
 }
@@ -624,6 +685,7 @@ const SHOTS = {
   },
   tapmode() { save.tapControls = true; SHOTS.grill(); },
   swipe() { SHOTS.grill(); app.switchStation(-1); app.slide.k = 0.4; },
+  fryerbatter() { play(3); const g = app.g; G.fryBatter(g); run(0.6); G.grabReady(g, 'beer'); run(0.2); }, // battered chicken waiting in the bowl
   fryer() {
     play(3); const g = app.g;
     G.fryBatter(g); run(0.5); G.fryToBasket(g, 0); run(4.3); G.fryBatter(g); run(0.5); G.fryToBasket(g, 1); run(1.1); G.fryBatter(g); run(0.6);
@@ -633,7 +695,7 @@ const SHOTS = {
     save.tapControls = true; play(3);
     const g = app.g;
     g.tray.push({ item: 'chicken', cook: 'done', perfect: true, sauce: null }, { item: 'chicken', cook: 'done', perfect: false, sauce: null });
-    G.pickSauce(g, 'yangnyeom'); app.pointer = { x: 70, y: 340 }; run(0.2);
+    G.pickSauce(g, 'yangnyeom'); app.pointer = at(70, 340); run(0.2);
   },
   wok() { // a dish in the air, a topped dish on the tray
     play(4); const g = app.g;
@@ -716,7 +778,10 @@ const SHOTS = {
 
 for (let n = 7; n <= 13; n++) SHOTS[`intro${n}`] ||= () => { app.newLevel(n); run(0.6); }; // every part 2 intro card
 if (params.has('cs')) setCustomerScale(Math.max(1, Math.min(5, Number(params.get('cs')) || 3)));
-window.nightMarket = { app, G, step, SHOTS, save, scoreServe, choiceBox };
+// For tools: design coordinates (180 x 390, on the current screen) -> game
+// coordinates -> CSS px, and the live layout.
+const designToCss = (x, y) => { const p = designToScreen(x, y, app.reg.frames); return toCss(p.x, p.y); };
+window.nightMarket = { app, G, step, SHOTS, save, scoreServe, choiceBox, toCss, designToCss, designToScreen: (x, y) => designToScreen(x, y, app.reg.frames), layout: () => LAY, view: () => view };
 loadAssets().then(() => {
   registerFoodArt();
   const shot = params.get('shot');

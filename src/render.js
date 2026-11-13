@@ -3,8 +3,9 @@
 // dropped on (targets). Menus and overlays are in screens.js.
 //
 // Two control schemes share one layout:
-//   drag (default)  grab from bins, drop on a station, flick up to flip or toss,
-//                   drag to the tray, drag the tray handle onto a guest
+//   drag (default)  grab from bins, drop on a station, tap (or flick up) to
+//                   flip, toss or lift a lid, drag to the tray, tap SERVE (or
+//                   drag the tray onto a guest)
 //   tap             the older tap-to-apply controls with FLIP / TAKE / TOSS /
 //                   LIFT / SERVE buttons (the "Tap controls" setting)
 import { W, H, C, R, rbox, text, tw, mix } from './gfx.js';
@@ -14,7 +15,8 @@ import {
   drawItem, drawSauce, coinIcon, lockIcon, speakerIcon, gearIcon, heartIcon, drawCustomer, drawShiba,
 } from './sprites.js';
 import { drawParts, drawFloats, bounceAmt } from './fx.js';
-import { hit, src, dst, setTrayBox, button, label, arrowIcon, binIcon, wrap } from './ui.js';
+import { hit, src, dst, setTrayBox, button, label, arrowIcon, binIcon, wrap, withOrigin, withClip } from './ui.js';
+import { LAY } from './layout.js';
 import { accepts, dragHint, findTarget } from './drag.js';
 import { SPIRITS, isSpirit } from './spirits.js';
 import * as G from './game.js';
@@ -31,16 +33,23 @@ const HOME_X = 52; // where the one guest stands on normal levels
 export const tapMode = (app) => !!app.save.tapControls;
 
 // ---------- market scene ----------
-const STARS = Array.from({ length: 26 }, (_, i) => [(i * 67 + 13) % W, 30 + ((i * 37) % 50), i]);
+// Drawn in screen coordinates for a scene S (layout.js): w wide, h tall, the
+// counter top at cy. The sky and the far street stretch to fill any size: the
+// top things (awning, light strings, moon) hang from the top, the street and
+// the counter sit on the bottom, and both repeat sideways.
 const STALLS = [
   { x: -6, w: 34, h: 36, c: '#7a3a5a' }, { x: 30, w: 30, h: 28, c: '#3a5a7a' }, { x: 62, w: 38, h: 40, c: '#7a5a2a' },
   { x: 102, w: 30, h: 30, c: '#4a6a4a' }, { x: 134, w: 52, h: 38, c: '#6a3a3a' },
 ];
+const STALL_COLS = ['#7a3a5a', '#3a5a7a', '#7a5a2a', '#4a6a4a', '#6a3a3a', '#5a4a7a'];
 const BULBS = [C.gold, C.red, C.teal, C.yellow, C.pink];
 
-function strand(t, y0, sag, phase) {
-  for (let x = -2; x < W + 2; x += 1) {
-    const k = (x - W / 2) / (W / 2);
+// A light string from x 0 to w, sagging in arcs about 180 px wide.
+function strand(t, y0, sag, phase, w) {
+  const n = Math.max(1, Math.round(w / 180)), seg = w / n;
+  for (let x = -2; x < w + 2; x += 1) {
+    const lx = ((x % seg) + seg) % seg;
+    const k = (lx - seg / 2) / (seg / 2);
     const y = y0 + sag * (1 - k * k);
     R(x, y, 1, 1, '#120c18');
     if ((x + phase) % 9 === 0) {
@@ -66,77 +75,123 @@ function lantern(x, y, t) {
 }
 
 // Snow for the frost at the end of night 13.
-function drawSnow(t) {
-  for (let i = 0; i < 40; i++) {
-    const sx = (i * 47 + 11) % W;
-    const y = ((t * (12 + (i % 4) * 5) + i * 37) % (SCENE_H + 10)) - 5;
+function drawSnow(t, S) {
+  const n = Math.round(40 * Math.max(1, S.w / 180) * Math.max(1, S.h / 158));
+  for (let i = 0; i < n; i++) {
+    const sx = (i * 47 + 11) % S.w;
+    const y = ((t * (12 + (i % 4) * 5) + i * 37) % (S.h + 10)) - 5;
     const x = Math.round(sx + Math.sin(t * 1.5 + i) * 3);
     R(x, Math.round(y), 1, 1, i % 3 ? '#dfe8f8' : C.white);
   }
 }
 // The street behind the stall. `opts.rain` darkens the sky and hides the stars;
 // `opts.festival` hangs more lanterns under a full moon; `opts.frost` brings snow.
-export function drawMarket(t, opts = {}) {
-  R(0, 0, W, SCENE_H, C.night0);
-  const bands = [[44, C.night1], [70, C.night2], [96, C.night3]];
+export function drawMarket(t, opts = {}, S = LAY.scene) {
+  const w = S.w, cy = S.cy, bot = S.h;
+  R(0, 0, w, bot, C.night0);
+  const bands = [[cy - 96, C.night1], [cy - 70, C.night2], [cy - 44, C.night3]];
   for (const [y, c0] of bands) {
     const c = opts.rain ? mix(c0, C.night0, 0.45) : c0;
-    R(0, y, W, SCENE_H - y, c);
-    for (let x = 0; x < W; x += 2) R(x + ((y / 2) % 2), y - 1, 1, 1, c); // dither edge
+    R(0, y, w, bot - y, c);
+    for (let x = 0; x < w; x += 2) R(x + ((y / 2) % 2), y - 1, 1, 1, c); // dither edge
   }
   if (!opts.rain) {
-    for (const [x, y, i] of STARS) if (Math.sin(t * 1.3 + i * 2.1) > -0.3) R(x, y, 1, 1, i % 4 ? C.grey : C.white);
+    const sky = Math.max(50, cy - 90); // stars from y 30 down to the street's glow
+    const n = Math.round(26 * (w / 180) * (sky / 50) ** 0.7);
+    for (let i = 0; i < n; i++) {
+      const x = (i * 67 + 13) % w, y = 30 + ((i * 37 + Math.floor(i / 5) * 11) % sky);
+      if (Math.sin(t * 1.3 + i * 2.1) > -0.3) R(x, y, 1, 1, i % 4 ? C.grey : C.white);
+    }
     R(18, 32, 9, 9, C.night1); R(19, 31, 7, 11, C.night1); // moon
     R(19, 33, 7, 7, C.cream); R(20, 32, 5, 9, C.cream); R(22, 34, 2, 2, mix(C.cream, C.grey, 0.4));
   }
-  for (const s of STALLS) {
-    const top = 126 - s.h;
-    R(s.x, top + 8, s.w, s.h - 8, mix(s.c, C.night0, 0.55));
-    for (let i = 0; i < s.w; i += 6) R(s.x + i, top, 3, 9, mix(s.c, C.night0, 0.25));
-    for (let i = 3; i < s.w; i += 6) R(s.x + i, top, 3, 9, mix(C.cream, C.night0, 0.5));
-    R(s.x + 3, top + 12, s.w - 6, 3, mix(C.gold, C.night0, 0.25)); // lit counter
-    R(s.x + s.w / 2 - 6, top + 2, 12, 5, C.ink);
+  const extra = cy - 140; // sky taller than the design's
+  // A tall sky: far hills and a pagoda against it, under a farther light string.
+  if (extra > 90) {
+    const hy = cy - 54 - 52; // the hills' foot, behind the rooftops
+    for (let x = 0; x < w; x++) {
+      const k = Math.sin(x * 0.021) * 14 + Math.sin(x * 0.057 + 1.3) * 6 + Math.sin(x * 0.13) * 2;
+      const top = Math.round(hy - 26 - k);
+      R(x, top, 1, cy - 14 - top, mix(C.night0, C.night1, 0.45));
+    }
+    const px = Math.floor(w * 0.72); // a pagoda on the far hill
+    const py = Math.round(hy - 30 - (Math.sin(px * 0.021) * 14 + Math.sin(px * 0.057 + 1.3) * 6));
+    for (let k = 0; k < 4; k++) {
+      const rw = 22 - k * 4, ry = py - k * 9;
+      R(px - rw / 2, ry, rw, 2, mix(C.night0, C.night2, 0.5));
+      R(px - rw / 2 + 3, ry + 2, rw - 6, 7, mix(C.night0, C.night1, 0.6));
+      if (k % 2 === 0) R(px - 1, ry + 4, 2, 2, mix(C.gold, C.night0, 0.45));
+    }
+    R(px, py - 40, 1, 5, mix(C.night0, C.night2, 0.5));
+    strand(t, 30 + Math.floor(extra * 0.42), 10, 3, w); // a far light string
+  }
+  // Rooftops further off, when the sky is tall enough to show them.
+  if (extra > 30) {
+    for (let x = -10, i = 0; x < w; i++) {
+      const bw = 26 + ((i * 17) % 22), bh = 22 + ((i * 29) % 30);
+      const top = cy - 54 - bh;
+      R(x, top, bw, cy - 14 - top, mix(C.night1, C.night0, 0.35));
+      R(x + 2, top - 3, bw - 4, 3, mix(C.night1, C.night0, 0.35));
+      for (let k = 0; k < 3; k++) if ((i + k) % 3 !== 1) R(x + 5 + k * 7, top + 6 + (k % 2) * 6, 2, 3, mix(C.gold, C.night0, 0.55)); // lit windows
+      x += bw + 6;
+    }
+  }
+  for (let ox = 0, rep = 0; ox < w + 6; ox += 190, rep++) {
+    STALLS.forEach((s0, j) => {
+      const s = { ...s0, c: rep ? STALL_COLS[(j + rep * 2) % STALL_COLS.length] : s0.c };
+      const x = s.x + ox, top = cy - 14 - s.h;
+      R(x, top + 8, s.w, s.h - 8, mix(s.c, C.night0, 0.55));
+      for (let i = 0; i < s.w; i += 6) R(x + i, top, 3, 9, mix(s.c, C.night0, 0.25));
+      for (let i = 3; i < s.w; i += 6) R(x + i, top, 3, 9, mix(C.cream, C.night0, 0.5));
+      R(x + 3, top + 12, s.w - 6, 3, mix(C.gold, C.night0, 0.25)); // lit counter
+      R(x + s.w / 2 - 6, top + 2, 12, 5, C.ink);
+    });
   }
   // Far-off shapes in the crowd: some people, some spirits (round, hovering).
-  for (let i = 0; i < 14; i++) {
-    const x = (i * 29 + 7) % (W + 10) - 5;
+  const crowd = Math.ceil((14 * (w + 10)) / 190);
+  for (let i = 0; i < crowd; i++) {
+    const x = (i * 29 + 7) % (w + 10) - 5;
     const bob = Math.round(Math.sin(t * 2 + i) * 0.7);
-    const y = 110 + (i % 3) * 4 + bob;
+    const y = cy - 30 + (i % 3) * 4 + bob;
     if (i % 4 === 1) {
       const fl = Math.round(Math.sin(t * 1.4 + i) * 1.5);
       R(x - 1, y - 2 + fl, 9, 8, '#2a2246'); R(x + 1, y - 3 + fl, 5, 10, '#2a2246');
       R(x + 2, y + 1 + fl, 1, 1, mix(C.gold, C.night0, 0.4)); R(x + 5, y + 1 + fl, 1, 1, mix(C.gold, C.night0, 0.4));
     } else { R(x, y, 7, 7, '#1c1530'); R(x - 2, y + 7, 11, 12, '#1c1530'); }
   }
-  R(0, 126, W, 16, '#231a30');
-  for (let x = 0; x < W; x += 12) R(x, 131, 8, 1, '#2d2240');
-  strand(t, 30, 16, 0);
-  lantern(40, 50, t); lantern(120, 52, t);
-  strand(t, 22, 8, 4);
+  R(0, cy - 14, w, 16, '#231a30');
+  for (let x = 0; x < w; x += 12) R(x, cy - 9, 8, 1, '#2d2240');
+  strand(t, 30, 16, 0, w);
+  for (let x = 40; x < w - 8; x += 80) lantern(x, x % 160 === 40 ? 50 : 52, t);
+  strand(t, 22, 8, 4, w);
   if (opts.festival) {
-    R(140, 30, 15, 15, C.night1); R(141, 29, 13, 17, C.night1); // a full moon
-    R(141, 31, 13, 13, C.cream); R(142, 30, 11, 15, C.cream); R(146, 34, 3, 2, mix(C.cream, C.grey, 0.4)); R(144, 39, 2, 2, mix(C.cream, C.grey, 0.4));
-    strand(t, 40, 12, 2);
-    for (const [x, y] of [[14, 62], [66, 64], [96, 60], [150, 62]]) lantern(x, y, t + x);
+    const mx = w - 40;
+    R(mx, 30, 15, 15, C.night1); R(mx + 1, 29, 13, 17, C.night1); // a full moon
+    R(mx + 1, 31, 13, 13, C.cream); R(mx + 2, 30, 11, 15, C.cream); R(mx + 6, 34, 3, 2, mix(C.cream, C.grey, 0.4)); R(mx + 4, 39, 2, 2, mix(C.cream, C.grey, 0.4));
+    strand(t, 40, 12, 2, w);
+    for (let ox = 0; ox < w; ox += 180) for (const [x, y] of [[14, 62], [66, 64], [96, 60], [150, 62]]) if (ox + x < w - 6) lantern(ox + x, y, t + x);
   }
   if (opts.frost) {
-    drawSnow(t);
-    for (let x = 0; x < W; x += 3) R(x, 125 + ((x * 7) % 3), 2, 1, '#dfe8f8'); // frost on the far stalls
+    drawSnow(t, S);
+    for (let x = 0; x < w; x += 3) R(x, cy - 15 + ((x * 7) % 3), 2, 1, '#dfe8f8'); // frost on the far stalls
   }
 }
 
 // Rain streaks over the street (level 4).
-export function drawRain(t) {
-  for (let i = 0; i < 46; i++) {
-    const sx = (i * 41 + 7) % (W + 30);
+export function drawRain(t, S = LAY.scene) {
+  const n = Math.round(46 * Math.max(1, S.w / 180) * Math.max(1, S.h / 158));
+  for (let i = 0; i < n; i++) {
+    const sx = (i * 41 + 7) % (S.w + 30);
     const sp = 140 + (i % 5) * 18;
-    const y = ((t * sp + i * 53) % (SCENE_H + 20)) - 10;
+    const y = ((t * sp + i * 53) % (S.h + 20)) - 10;
     const x = Math.round(sx - y * 0.25);
     R(x, Math.round(y), 1, 3, i % 3 ? '#5f74b0' : '#8fa4d8');
   }
 }
 
-export function awningAndCounter(t, dogOpts = {}) {
+// The awning along the top and its posts (screen coordinates).
+export function awning(S = LAY.scene) {
+  const W = S.w;
   for (let x = 0; x < W; x += 10) {
     const c = (x / 10) % 2 ? C.cream : C.red;
     R(x, 14, 10, 10, c);
@@ -144,13 +199,21 @@ export function awningAndCounter(t, dogOpts = {}) {
     R(x, 24, 1, 2, C.ink);
   }
   R(0, 14, W, 1, C.ink);
-  R(0, 14, 5, COUNTER_Y - 14, C.woodD); R(1, 14, 1, COUNTER_Y - 14, C.wood);
-  R(W - 5, 14, 5, COUNTER_Y - 14, C.woodD); R(W - 4, 14, 1, COUNTER_Y - 14, C.wood);
-  R(0, COUNTER_Y, W, 6, C.woodL);
-  R(0, COUNTER_Y, W, 1, C.cream);
-  R(0, COUNTER_Y + 6, W, SCENE_H - COUNTER_Y - 6, C.wood);
-  for (let x = 8; x < W; x += 22) R(x, COUNTER_Y + 7, 1, SCENE_H - COUNTER_Y - 7, C.woodD);
-  R(0, SCENE_H - 1, W, 1, C.ink);
+  R(0, 14, 5, S.cy - 14, C.woodD); R(1, 14, 1, S.cy - 14, C.wood);
+  R(W - 5, 14, 5, S.cy - 14, C.woodD); R(W - 4, 14, 1, S.cy - 14, C.wood);
+}
+// The counter: its top at cy, its front down to `bottom` (screen coordinates).
+export function counterBand(S = LAY.scene, frost = false, bottom = S.cy + 18) {
+  const W = S.w, cy = S.cy;
+  R(0, cy, W, 6, C.woodL);
+  R(0, cy, W, 1, C.cream);
+  R(0, cy + 6, W, bottom - cy - 6, C.wood);
+  for (let x = (((8 + S.d) % 22) + 22) % 22; x < W; x += 22) R(x, cy + 7, 1, bottom - cy - 7, C.woodD);
+  R(0, bottom - 1, W, 1, C.ink);
+  if (frost) for (let x = 1; x < W; x += 2) R(x, cy + ((x * 5) % 3 === 0 ? 1 : 0), 1, 1, '#eaf2ff'); // frost on the counter
+}
+// What stands on the counter (design coordinates, in the service area).
+export function counterDecor(t, dogOpts = {}) {
   // The stall's sign hangs on the front of the counter, below the guests (on a
   // queue night the third guest stands where it used to be).
   rbox(130, COUNTER_Y + 7, 36, 10, C.ink, C.woodDD);
@@ -161,8 +224,17 @@ export function awningAndCounter(t, dogOpts = {}) {
     rbox(46, COUNTER_Y + 7, w, 10, '#2c4a34', C.woodDD);
     text(str, 46 + w / 2, COUNTER_Y + 9, { color: C.cream, align: 'center', outline: null });
   }
-  if (dogOpts.frost) for (let x = 1; x < W; x += 2) R(x, COUNTER_Y + ((x * 5) % 3 === 0 ? 1 : 0), 1, 1, '#eaf2ff'); // frost on the counter
   if (!dogOpts.none) drawShiba(20, COUNTER_Y + 2, { t, react: dogOpts.react || null, mood: dogOpts.mood || 'wait' });
+}
+// Draws fn() in the service area: design coordinates moved to the counter.
+export function inScene(fn, S = LAY.scene) {
+  withOrigin(S.d, S.cy - COUNTER_Y, fn, [0, 14, 180, SCENE_H]);
+}
+// The whole stall front: awning, counter and what is on it.
+export function awningAndCounter(t, dogOpts = {}, S = LAY.scene, bottom = S.cy + 18) {
+  awning(S);
+  counterBand(S, !!dogOpts.frost, bottom);
+  inScene(() => counterDecor(t, dogOpts), S);
 }
 
 // Chimaek and her treat (level 9 on): a thought bubble with plain beef when
@@ -210,8 +282,11 @@ export function dogReact(g) {
 const queueLevel = (g) => g.queueMax > 1;
 export function guestX(g, c) {
   const home = queueLevel(g) ? QUEUE_X[c.col % QUEUE_X.length] : HOME_X;
-  if (c.phase === 'enter') { const k = Math.min(1, c.t / c.enterTime); return -30 + (home + 30) * (1 - Math.pow(1 - k, 3)); }
-  if (c.phase === 'leave') { const k = Math.max(0, (c.t - 0.45) / 0.55); return home + (W + 40 - home) * k * k; }
+  // In design coordinates: they walk in from the left edge of the street and
+  // out past its right edge (wherever those are on this screen).
+  const S = LAY.scene, from = -30 - S.d, to = S.sw - S.d + 40;
+  if (c.phase === 'enter') { const k = Math.min(1, c.t / c.enterTime); return from + (home - from) * (1 - Math.pow(1 - k, 3)); }
+  if (c.phase === 'leave') { const k = Math.max(0, (c.t - 0.45) / 0.55); return home + (to - home) * k * k; }
   return home;
 }
 
@@ -297,7 +372,7 @@ function reactionBubble(c, cx) {
   const r = c.result;
   const msg = c.mood === 'happy' ? (r && r.perfects ? 'PERFECT!' : 'YUM!') : c.mood === 'meh' ? 'HMM...' : r ? 'WRONG!' : 'TOO SLOW!';
   const w = tw(msg, 'big') + 10;
-  const x = Math.round(Math.min(W - w - 4, Math.max(4, cx - w / 2))), y = 40;
+  const x = Math.round(Math.min(176 - w, Math.max(4, cx - w / 2))), y = 40;
   rbox(x, y, w, 14, c.mood === 'happy' ? C.white : c.mood === 'meh' ? C.cream : C.redL);
   text(msg, x + w / 2, y + 4, { font: 'big', color: C.ink, outline: null, align: 'center' });
 }
@@ -324,7 +399,8 @@ function drawOrders(app) {
     if (c.phase === 'wait') {
       if (q) ticket(g, c, cx, t); else orderBubble(g, c, t);
       // Where the tray can be dropped (or tapped) to serve this guest.
-      const box = q ? [cx - 26, 27, 52, COUNTER_Y - 27] : [20, 27, W - 22, COUNTER_Y - 27];
+      const top = 27; // from the top of the order down to the counter
+      const box = q ? [cx - 26, top, 52, COUNTER_Y - top] : [20, top, 158, COUNTER_Y - top];
       if (live) {
         if (drag) dst(...box, { kind: 'customer', idx });
         else hit(...box, () => G.serve(g, idx), 'customer');
@@ -340,7 +416,7 @@ function banner(app) {
   const b = app.banner;
   if (!b || b.t < 0) return;
   const q = app.g && queueLevel(app.g);
-  const x = q ? 4 : 6, w = q ? W - 8 : 82, y = q ? 86 : 30;
+  const x = q ? 4 : 6, w = q ? 172 : 82, y = q ? 86 : 30;
   const rows = wrap(b.text, w - 9);
   const h = 13 + rows.length * 7;
   rbox(x, y + 1, w, h, C.ink);
@@ -354,29 +430,33 @@ function banner(app) {
 export function hud(app) {
   const g = app.g;
   R(0, 0, W, 14, C.ink);
+  const right = (fn) => withOrigin(W - 180, 0, fn, [130, 0, 180, 14]); // menu, settings and sound sit on the right
+  withOrigin(0, 0, () => {}, [0, 0, 130, 14]);
   if (g && app.screen === 'game' && g.endless) { // endless: guests so far and the strikes left
     for (const [dx, dy] of [[0, 1], [1, 0], [2, 0], [3, 1], [4, 2], [5, 2], [6, 1], [7, 0], [8, 0], [9, 1], [8, 2], [7, 2], [2, 2], [1, 2]]) R(5 + dx, 5 + dy, 1, 1, C.gold); // an infinity sign
     coinIcon(30, 3);
     text(String(app.shownCoins ?? g.coins), 40, 4, { font: 'big', color: C.yellow });
     text(`GUEST ${Math.max(1, g.custIdx + 1)}`, 70, 4, { color: C.cream });
     for (let k = 0; k < g.def.strikes; k++) heartIcon(110 + k * 8, 4, k < g.def.strikes - g.lost ? C.red : C.greyDD);
-    R(138, 4, 7, 1, C.grey); R(138, 6, 7, 1, C.grey); R(138, 8, 7, 1, C.grey); // menu
-    hit(132, 0, 15, 14, () => app.toTitle());
   } else if (g && app.screen === 'game') {
     text(`LV ${g.level}`, 4, 4, { color: C.gold });
     coinIcon(30, 3);
     text(String(app.shownCoins ?? g.coins), 40, 4, { font: 'big', color: C.yellow });
     const n = Math.min(g.custIdx + 1, g.orders.length);
     text(`GUEST ${Math.max(1, n)}/${g.orders.length}`, 78, 4, { color: C.cream });
-    R(138, 4, 7, 1, C.grey); R(138, 6, 7, 1, C.grey); R(138, 8, 7, 1, C.grey); // menu
-    hit(132, 0, 15, 14, () => app.toTitle());
   } else {
     text('CHIMAEK NIGHT MARKET', 4, 4, { color: C.gold });
   }
-  gearIcon(151, 3);
-  hit(147, 0, 15, 14, () => app.openSettings(), 'settings');
-  speakerIcon(166, 2, app.muted);
-  hit(162, 0, 18, 14, () => app.toggleMute());
+  right(() => {
+    if (g && app.screen === 'game') {
+      R(138, 4, 7, 1, C.grey); R(138, 6, 7, 1, C.grey); R(138, 8, 7, 1, C.grey); // menu
+      hit(132, 0, 15, 14, () => app.toTitle(), 'ui', 'menu');
+    }
+    gearIcon(151, 3);
+    hit(147, 0, 15, 14, () => app.openSettings(), 'settings', 'settings');
+    speakerIcon(166, 2, app.muted);
+    hit(162, 0, 18, 14, () => app.toggleMute(), 'ui', 'mute');
+  });
 }
 
 // ---------- station tabs ----------
@@ -412,35 +492,40 @@ export function tabLabel(id, w) {
   return tw(full) <= w - 2 ? full : (STATIONS[id].tab || full).toUpperCase();
 }
 function tabs(app) {
-  const g = app.g;
-  R(0, TABS_Y, W, 14, C.woodDD);
+  const g = app.g, T = LAY.tabs;
+  R(T.x, T.y, T.w, 14, C.woodDD);
+  withOrigin(T.x + Math.floor((T.w - 180) / 2), T.y - TABS_Y, () => {}, [0, TABS_Y, 180, PANEL_Y]);
   const n = g.stations.length;
-  const w0 = W / n;
+  const w0 = T.w / n;
   g.stations.forEach((s, i) => {
-    const x = Math.round(i * w0), w = Math.round((i + 1) * w0) - x;
+    const x = T.x + Math.round(i * w0), w = T.x + Math.round((i + 1) * w0) - x;
+    const y = T.y;
     const cur = i === g.station;
-    if (cur) { R(x + 1, TABS_Y + 1, w - 2, 13, C.cream); R(x + 1, TABS_Y + 13, w - 2, 1, C.cream); }
-    else R(x + 1, TABS_Y + 2, w - 2, 10, mix(C.woodDD, C.ink, 0.3));
+    if (cur) { R(x + 1, y + 1, w - 2, 13, C.cream); R(x + 1, y + 13, w - 2, 1, C.cream); }
+    else R(x + 1, y + 2, w - 2, 10, mix(C.woodDD, C.ink, 0.3));
     const lab = tabLabel(s.id, w);
     const col = cur ? C.ink : s.status === 'open' ? C.cream : C.greyD;
     if (s.status !== 'open') {
       if (tw(lab) + 14 <= w) {
-        lockIcon(x + 3, TABS_Y + 2, cur ? C.greyD : C.greyDD);
-        text(lab, x + 14, TABS_Y + 5, { color: col, outline: cur ? null : C.ink });
-      } else lockIcon(x + Math.floor(w / 2) - 4, TABS_Y + 2, cur ? C.greyD : C.greyD);
-    } else text(lab, x + w / 2, TABS_Y + 5, { color: col, align: 'center', outline: cur ? null : C.ink });
+        lockIcon(x + 3, y + 2, cur ? C.greyD : C.greyDD);
+        text(lab, x + 14, y + 5, { color: col, outline: cur ? null : C.ink });
+      } else lockIcon(x + Math.floor(w / 2) - 4, y + 2, cur ? C.greyD : C.greyD);
+    } else text(lab, x + w / 2, y + 5, { color: col, align: 'center', outline: cur ? null : C.ink });
     // A dot on another station's tab when food there is ready (green) or burning (red).
     const a = !cur && s.status === 'open' && g.phase === 'play' ? stationAlert(g, s.id) : null;
-    if (a && (a === 'ready' || Math.floor(app.time * 4) % 2)) { R(x + w - 6, TABS_Y + 1, 5, 4, C.ink); R(x + w - 5, TABS_Y + 2, 3, 2, a === 'ready' ? C.green : C.red); }
-    hit(x, TABS_Y, w, 14, () => app.goStation(i), 'tab');
+    if (a && (a === 'ready' || Math.floor(app.time * 4) % 2)) { R(x + w - 6, y + 1, 5, 4, C.ink); R(x + w - 5, y + 2, 3, 2, a === 'ready' ? C.green : C.red); }
+    hit(x, y, w, 14, () => app.goStation(i), 'tab', `tab:${s.id}`);
   });
 }
 
 // ---------- station panels ----------
+// The panel's background fills its whole rect (wider and taller than the
+// 180 x 146 design on big screens); the station sits in the middle.
 function panelBg(ox) {
-  R(ox, PANEL_Y, W, PANEL_H, C.woodDD);
-  for (let y = PANEL_Y + 10; y < PANEL_Y + PANEL_H; y += 12) R(ox, y, W, 1, mix(C.woodDD, C.ink, 0.4));
-  R(ox, PANEL_Y, W, 2, mix(C.woodDD, C.gold, 0.25));
+  const P = LAY.panel.local;
+  R(ox + P.x, P.y, P.w, P.h, C.woodDD);
+  for (let y = PANEL_Y + 10 - 12 * Math.ceil((PANEL_Y - P.y) / 12); y < P.y + P.h; y += 12) R(ox + P.x, y, P.w, 1, mix(C.woodDD, C.ink, 0.4));
+  R(ox + P.x, P.y, P.w, 2, mix(C.woodDD, C.gold, 0.25));
 }
 
 // A cooking meter: grey = raw, green = done, gold = perfect, red = burnt.
@@ -612,8 +697,12 @@ function fryerPanel(app, ox, live) {
   R(bx + 3, by + 9, 48, 13, C.cream); R(bx + 5, by + 9, 44, 3, C.white);
   const bowl = g.fryer.bowl;
   if (bowl && !holding(app, 'bowl')) {
+    // The chicken sits in the batter: only the part above the batter shows,
+    // and it never pokes out of the bowl's slot (it sinks deeper as it dips).
     const dip = bowl.dipping > 0 ? Math.round(Math.sin((1 - bowl.dipping / 0.45) * Math.PI) * 6) : 0;
-    drawItem('chicken', bx + 11, by - 12 + dip, { raw: !bowl.battered, p: 0, scale: 2 });
+    withClip(bx, by - 8, 54, 20, () => drawItem('chicken', bx + 11, by - 7 + dip, { raw: !bowl.battered, p: 0, scale: 2 }));
+    R(bx + 3, by + 12, 48, 3, C.cream); R(bx + 8, by + 11, 6, 1, C.cream); R(bx + 33, by + 11, 9, 1, C.cream); // the batter's surface, lapping at it
+    R(bx + 6, by + 12, 40, 1, C.white);
   }
   R(bx + 3, by + 15, 48, 7, '#d8e0f0'); R(bx + 4, by + 16, 3, 4, C.white); // bowl front
   let msg = 'BATTER';
@@ -700,7 +789,7 @@ function wokPanel(app, ox, live) {
   else if (w.scorch > 0) { msg = 'SCORCHING! TOSS!'; col = Math.floor(t * 6) % 2 ? C.red : C.yellow; }
   else if (inAir) { msg = 'IN THE AIR...'; col = C.yellow; }
   else if (st === 'done') { msg = 'DONE! TO THE TRAY'; col = C.greenL; }
-  else if (w.tosses + w.spills === 0) { msg = drag ? 'FLICK UP TO TOSS' : 'TAP TO TOSS'; col = C.yellow; }
+  else if (w.tosses + w.spills === 0) { msg = 'TAP TO TOSS'; col = C.yellow; }
   rbox(cx - tw(msg) / 2 - 4, wy + 4, tw(msg) + 9, 10, C.ink);
   text(msg, cx, wy + 6, { color: col, align: 'center' });
   meter(cx - 56, wy + 71, 112, 4, w.p, spec, true);
@@ -893,9 +982,10 @@ function potPanel(app, ox, live) {
 }
 
 function lockedPanel(app, ox, s) {
-  R(ox, PANEL_Y, W, PANEL_H, '#191424');
-  for (let y = PANEL_Y; y < PANEL_Y + PANEL_H; y += 4) R(ox, y, W, 1, '#1e1830');
-  const cx = ox + W / 2;
+  const P = LAY.panel.local;
+  R(ox + P.x, P.y, P.w, P.h, '#191424');
+  for (let y = PANEL_Y - 4 * Math.ceil((PANEL_Y - P.y) / 4); y < P.y + P.h; y += 4) R(ox + P.x, y, P.w, 1, '#1e1830');
+  const cx = ox + 90;
   R(cx - 9, PANEL_Y + 26, 18, 16, C.ink); R(cx - 8, PANEL_Y + 27, 16, 14, C.greyD); R(cx - 5, PANEL_Y + 30, 10, 12, C.ink); R(cx - 4, PANEL_Y + 31, 8, 11, '#191424');
   R(cx - 14, PANEL_Y + 40, 28, 24, C.ink); R(cx - 12, PANEL_Y + 42, 24, 20, C.greyD); R(cx - 1, PANEL_Y + 47, 3, 8, C.ink);
   text(STATIONS[s.id].name.toUpperCase(), cx, PANEL_Y + 74, { font: 'big', align: 'center', color: C.cream });
@@ -928,8 +1018,9 @@ export const BIN_BOX = { x: 154, y: TRAY_Y + 47, w: 26, h: 23 };
 
 function tray(app, live) {
   const g = app.g, t = app.time, drag = !tapMode(app);
-  R(0, TRAY_Y, W, H - TRAY_Y, C.woodD);
-  R(0, TRAY_Y, W, 1, C.ink);
+  const TL = LAY.tray.local; // the whole tray strip, in design coordinates
+  R(TL.x, TL.y, TL.w, TL.h, C.woodD);
+  R(TL.x, TRAY_Y, TL.w, 1, C.ink);
   const B = TRAY_BOX;
   rbox(B.x, B.y, B.w, B.h, C.woodL);
   R(B.x + 2, B.y + 2, B.w - 4, B.h - 4, C.wood);
@@ -971,7 +1062,7 @@ function tray(app, live) {
   if (drag) {
     arrowIcon(Hn.x + 14, Hn.y + 6 - pulse, 'up', C.white);
     text('SERVE', Hn.x + 16, Hn.y + 15 - pulse, { color: C.white, align: 'center' });
-    for (let k = 0; k < 3; k++) R(Hn.x + 8, Hn.y + 25 + k * 3 - pulse, 16, 1, mix(fill, C.ink, 0.35)); // grip
+    text('TAP', Hn.x + 16, Hn.y + 27 - pulse, { color: mix(fill, C.white, 0.6), align: 'center', outline: mix(fill, C.ink, 0.5) }); // a tap serves; a drag onto a guest does too
     if (live && g.tray.length) src(Hn.x - 2, Hn.y - 2, Hn.w + 4, Hn.h + 4, { kind: 'serve' });
     const Bn = BIN_BOX;
     const open = !!app.drag && app.drag.lifted && accepts(g, app.drag.payload, { kind: 'trash' });
@@ -982,7 +1073,7 @@ function tray(app, live) {
     R(Hn.x + 8, Hn.y + 26 - pulse, 16, 2, C.white); R(Hn.x + 14, Hn.y + 24 - pulse, 4, 6, C.white);
     if (live) hit(Hn.x - 2, Hn.y - 2, Hn.w + 4, Hn.h + 4, () => G.serveAuto(g), 'serve');
   }
-  const hx = drag ? 77 : W / 2;
+  const hx = drag ? 77 : 90;
   text(hintFor(app), hx, TRAY_Y + 56, { align: 'center', color: g.held ? C.yellow : C.cream });
   const sub = subHint(app);
   if (sub) text(sub, hx, TRAY_Y + 64, { align: 'center', color: C.grey });
@@ -992,13 +1083,13 @@ function hintFor(app) {
   if (g.held) return 'TAP FOOD ON THE TRAY TO SAUCE IT';
   if (app.drag && app.drag.lifted) return dragHint(app.drag.payload);
   const ready = g.tray.length && G.waiting(g).some((c) => scoreServe(c.order, g.tray, 1).mood === 'happy');
-  if (ready) return drag ? 'READY: DRAG SERVE TO THE GUEST' : 'ORDER READY: TAP SERVE!';
+  if (ready) return 'ORDER READY: TAP SERVE!';
   if (s.status !== 'open') return 'SWIPE TO GO BACK';
   if (drag) {
     return {
-      counter: 'DRAG FOOD DOWN TO THE TRAY', grill: 'DRAG MEAT ON. FLICK UP: FLIP',
-      fryer: 'BATTER, BASKET, THEN THE TRAY', wok: 'FLICK UP TO TOSS. LET IT LAND',
-      steamer: 'FOOD IN, LID ON, FLICK UP TO LIFT', pot: 'KETTLE, WAIT FOR THE BOIL, NOODLES',
+      counter: 'DRAG FOOD DOWN TO THE TRAY', grill: 'DRAG MEAT ON. TAP IT TO FLIP',
+      fryer: 'BATTER, BASKET, THEN THE TRAY', wok: 'TAP THE WOK TO TOSS. LET IT LAND',
+      steamer: 'FOOD IN, LID ON, TAP TO LIFT', pot: 'KETTLE, WAIT FOR THE BOIL, NOODLES',
     }[s.id];
   }
   return {
@@ -1072,48 +1163,63 @@ function toastBox(app) {
   if (!ts) return;
   const w = tw(ts.str, 'big') + 12;
   const y = PANEL_Y + 52 - Math.round(Math.min(1, ts.t * 6) * 6);
-  rbox(W / 2 - w / 2, y, w, 15, ts.good ? C.greenD : C.redD);
-  text(ts.str, W / 2, y + 4, { font: 'big', align: 'center', color: C.white });
+  rbox(90 - w / 2, y, w, 15, ts.good ? C.greenD : C.redD);
+  text(ts.str, 90, y + 4, { font: 'big', align: 'center', color: C.white });
 }
 
 // ---------- the game frame (screens.js adds the overlays) ----------
 export function drawGame(app, reg) {
-  const g = app.g;
-  drawMarket(app.time, { rain: !!g.def.rain });
-  drawGuests(app);
-  if (g.def.rain) drawRain(app.time);
-  awningAndCounter(app.time, { ...dogLook(g, app.time), special: g.def.special });
-  drawOrders(app);
-  dogExtras(app);
-  if (g.dog && g.phase === 'play' && !app.slide) { // give Chimaek her treat
-    const B = DOG_BOX;
-    if (!tapMode(app)) {
-      dst(B.x, B.y, B.w, B.h, { kind: 'dog' });
-      hit(B.x, B.y, B.w, B.h, () => app.say(g.dog.want ? 'DRAG PLAIN BEEF ONTO HER' : 'GOOD DOG'), 'dog');
-    } else hit(B.x, B.y, B.w, B.h, () => G.tapDog(g), 'dog');
+  const g = app.g, S = LAY.scene, P = LAY.panel, T = LAY.tray;
+  drawMarket(app.time, { rain: !!g.def.rain }, S);
+  inScene(() => drawGuests(app));
+  if (g.def.rain) drawRain(app.time, S);
+  awning(S);
+  counterBand(S);
+  inScene(() => {
+    counterDecor(app.time, { ...dogLook(g, app.time), special: g.def.special });
+    drawOrders(app);
+    dogExtras(app);
+    if (g.dog && g.phase === 'play' && !app.slide) { // give Chimaek her treat
+      const B = DOG_BOX;
+      if (!tapMode(app)) {
+        dst(B.x, B.y, B.w, B.h, { kind: 'dog' });
+        hit(B.x, B.y, B.w, B.h, () => app.say(g.dog.want ? 'DRAG PLAIN BEEF ONTO HER' : 'GOOD DOG'), 'dog');
+      } else hit(B.x, B.y, B.w, B.h, () => G.tapDog(g), 'dog');
+    }
+    drawParts(app.fx, 'world');
+    banner(app);
+  });
+  if (LAY.mode === 'wide') { // the kitchen's frame, next to the street
+    R(P.x - 3, LAY.tabs.y - 3, 3, LAY.H - LAY.tabs.y + 3, C.woodD);
+    R(P.x - 3, LAY.tabs.y - 3, LAY.W - P.x + 3, 3, C.woodD);
+    R(P.x - 4, LAY.tabs.y - 4, 1, LAY.H - LAY.tabs.y + 4, C.ink);
+    R(P.x - 4, LAY.tabs.y - 4, LAY.W - P.x + 4, 1, C.ink);
   }
-  drawParts(app.fx, 'world');
-  banner(app);
   tabs(app);
   const sl = app.slide;
-  if (sl && sl.k < 1) {
-    const e = 1 - Math.pow(1 - sl.k, 3);
-    drawPanel(app, sl.from, Math.round(-sl.dir * W * e), false);
-    drawPanel(app, g.station, Math.round(sl.dir * W * (1 - e)), false);
-  } else drawPanel(app, g.station, 0, g.phase === 'play');
+  withClip(P.x, P.y, P.w, P.h, () => {
+    if (sl && sl.k < 1) {
+      const e = 1 - Math.pow(1 - sl.k, 3);
+      withOrigin(P.tx, P.ty, () => {
+        drawPanel(app, sl.from, Math.round(-sl.dir * P.w * e), false);
+        drawPanel(app, g.station, Math.round(sl.dir * P.w * (1 - e)), false);
+      });
+    } else withOrigin(P.tx, P.ty, () => drawPanel(app, g.station, 0, g.phase === 'play'), [0, PANEL_Y, 180, TRAY_Y]);
+  });
   const blink = Math.floor(app.time * 2) % 2;
+  const ay = P.ty + PANEL_Y; // the switch arrows sit on the panel's edges
   if (g.station > 0) {
-    text('<', 2, PANEL_Y + 70, { font: 'big', color: blink ? C.cream : C.grey });
-    hit(0, PANEL_Y + 54, 9, 40, () => app.switchStation(-1), 'arrow');
+    text('<', P.x + 2, ay + 70, { font: 'big', color: blink ? C.cream : C.grey });
+    hit(P.x, ay + 54, 9, 40, () => app.switchStation(-1), 'arrow');
   }
   if (g.station < g.stations.length - 1) {
-    text('>', W - 2, PANEL_Y + 70, { font: 'big', color: blink ? C.cream : C.grey, align: 'right' });
-    hit(W - 9, PANEL_Y + 54, 9, 40, () => app.switchStation(1), 'arrow');
+    text('>', P.x + P.w - 2, ay + 70, { font: 'big', color: blink ? C.cream : C.grey, align: 'right' });
+    hit(P.x + P.w - 9, ay + 54, 9, 40, () => app.switchStation(1), 'arrow');
   }
-  tray(app, g.phase === 'play' && !sl);
+  withOrigin(T.tx, T.ty, () => { tray(app, g.phase === 'play' && !sl); drawParts(app.fx, 'tray'); }, [0, TRAY_Y, 180, 390]);
   if (g.held && app.pointer) drawSauce(g.held, Math.round(app.pointer.x) - 16, Math.round(app.pointer.y) - 40, false, 2);
   dragOverlay(app, reg.targets);
-  toastBox(app);
-  drawFloats(app.fx);
+  withOrigin(P.tx, P.ty, () => toastBox(app));
+  inScene(() => drawFloats(app.fx));
   hud(app);
 }

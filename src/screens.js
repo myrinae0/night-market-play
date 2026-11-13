@@ -9,15 +9,24 @@ import { drawItem, drawCustomer, drawShiba, drawPortrait, starIcon, lockIcon, co
 import { SPIRITS, SPIRIT_IDS } from './spirits.js';
 import { SCENES, speakerName, afterSceneFor } from './story.js';
 import {
-  drawGame, drawMarket, drawRain, awningAndCounter, hud, tapMode, SCENE_H, COUNTER_Y, lidArt, kettleArt,
+  drawGame, drawMarket, drawRain, awningAndCounter, hud, tapMode, SCENE_H, COUNTER_Y, lidArt, kettleArt, inScene,
 } from './render.js';
 import { drawParts } from './fx.js';
-import { resetRegistry, clearHits, hit, dim, panel, button, toggle, wrap } from './ui.js';
+import { resetRegistry, clearHits, hit, dim, panel, button, toggle, wrap, withOrigin } from './ui.js';
+import { LAY, wideRight, centerBlock } from './layout.js';
 
-const woodFloor = (y0 = SCENE_H) => {
-  R(0, y0, W, H - y0, C.woodDD);
-  for (let y = y0 + 10; y < H; y += 12) R(0, y, W, 1, mix(C.woodDD, C.ink, 0.4));
+// Wooden floor planks over a screen rect (default: everything below y0).
+const woodFloor = (y0 = SCENE_H, x0 = 0, w = W) => {
+  R(x0, y0, w, H - y0, C.woodDD);
+  for (let y = y0 + 10; y < H; y += 12) R(x0, y, w, 1, mix(C.woodDD, C.ink, 0.4));
 };
+// A whole design screen (180 x 390), or the part top..bottom of it, centred on
+// the canvas. `below` keeps it under the HUD.
+function centered(fn, top = 0, bottom = 390, below = 0) {
+  const { dx, dy } = centerBlock(top, bottom, { x: 0, y: below, w: W, h: H - below });
+  withOrigin(dx, dy, fn, [0, 0, 180, 390]);
+}
+const isWide = () => LAY.mode === 'wide';
 export const shopOpen = (save) => (save.stars[SHOP_FROM_LEVEL] || 0) >= 1;
 
 // ---------- title ----------
@@ -35,25 +44,46 @@ export function levelTag(L) {
   if (L.kind === 'queue') return '3 GUESTS AT ONCE';
   return `+ ${STATIONS[L.stations[L.stations.length - 1]].name.toUpperCase()}`;
 }
+// Portrait: the street on top (it gets the extra height), the level cards on
+// the wood floor below. Wide: the street on the left, the cards on the right.
+export function titleLayout(W, H, mode) {
+  if (mode === 'wide') {
+    const RW = wideRight(W), LW = W - RW;
+    const S = { w: W, h: H, cy: H - 18, d: Math.floor((LW - 180) / 2), sw: LW };
+    const floor = { x: LW, y: 14, w: RW, h: H - 14 };
+    return { S, floor, cards: centerBlock(SCENE_H, 390, floor) };
+  }
+  const sh = H - (390 - SCENE_H);
+  const S = { w: W, h: sh, cy: sh - 18, d: Math.floor((W - 180) / 2), sw: W };
+  const floor = { x: 0, y: sh, w: W, h: H - sh };
+  return { S, floor, cards: centerBlock(SCENE_H, 390, floor) };
+}
 function titleScreen(app) {
   const t = app.time;
-  drawMarket(t, { festival: isUnlocked(13, app.save.stars) });
-  drawCustomer('lantern', 52, COUNTER_Y + 2, { t });
-  awningAndCounter(t, { react: 'wag' });
-  rbox(84, 32, 92, 46, C.ink);
-  rbox(84, 30, 92, 46, C.redD);
-  R(86, 32, 88, 1, C.red);
-  text('CHIMAEK', 130, 36, { font: 'big', scale: 2, align: 'center', color: C.yellow });
-  text('NIGHT MARKET', 130, 57, { font: 'big', align: 'center', color: C.cream });
-  text('A STALL FOR SPIRITS', 130, 67, { align: 'center', color: C.gold });
-  rbox(108, 84, 46, 13, C.ink);
-  coinIcon(112, 87);
-  text(String(app.save.wallet), 122, 88, { color: C.yellow });
-  woodFloor();
+  const { S, floor, cards } = titleLayout(W, H, LAY.mode);
+  drawMarket(t, { festival: isUnlocked(13, app.save.stars) }, S);
+  inScene(() => drawCustomer('lantern', 52, COUNTER_Y + 2, { t }), S);
+  awningAndCounter(t, { react: 'wag' }, S);
+  // The sign floats in the sky, halfway between the awning and the guest.
+  withOrigin(S.d, Math.floor((S.cy - COUNTER_Y) / 2), () => {
+    rbox(84, 32, 92, 46, C.ink);
+    rbox(84, 30, 92, 46, C.redD);
+    R(86, 32, 88, 1, C.red);
+    text('CHIMAEK', 130, 36, { font: 'big', scale: 2, align: 'center', color: C.yellow });
+    text('NIGHT MARKET', 130, 57, { font: 'big', align: 'center', color: C.cream });
+    text('A STALL FOR SPIRITS', 130, 67, { align: 'center', color: C.gold });
+    rbox(108, 84, 46, 13, C.ink);
+    coinIcon(112, 87);
+    text(String(app.save.wallet), 122, 88, { color: C.yellow });
+  }, [80, 26, 180, 100]);
+  woodFloor(floor.y, floor.x, floor.w);
+  withOrigin(cards.dx, cards.dy, () => titleCards(app), [0, SCENE_H, 180, 390]);
+}
+function titleCards(app) {
   const page = app.titlePage || 0;
   ['PART 1', 'PART 2'].forEach((lab, i) => {
     const on = page === i;
-    button(6 + i * 86, SCENE_H + 3, 82, 14, lab, on ? C.redD : C.greyDD, () => app.setTitlePage(i), 'ui');
+    button(6 + i * 86, SCENE_H + 3, 82, 14, lab, on ? C.redD : C.greyDD, () => app.setTitlePage(i), 'ui', 'small', `part:${i + 1}`);
     if (on) R(10 + i * 86, SCENE_H + 17, 74, 1, C.gold);
   });
   TITLE_PAGES[page].forEach((n, k) => {
@@ -68,7 +98,7 @@ function titleScreen(app) {
       if (open) {
         coinIcon(x + 5, y + 22);
         text(app.save.endlessBest ? `BEST ${app.save.endlessBest}` : 'NO BEST YET', x + 15, y + 23, { color: C.yellow, outline: null });
-        hit(x, y, w, h, () => app.playLevel(L.n));
+        hit(x, y, w, h, () => app.playLevel(L.n), 'ui', 'level:99');
       } else lockIcon(x + w - 14, y + 4, C.greyD);
       return;
     }
@@ -80,32 +110,37 @@ function titleScreen(app) {
       const st = app.save.stars[L.n] || 0;
       for (let i = 0; i < 3; i++) starIcon(x + w - 35 + i * 10, y + 3, i < st, 1);
       if (L.rain && !levelTag(L).includes('RAIN')) text('RAIN', x + w - 5, y + 31, { color: C.blue, outline: null, align: 'right' });
-      hit(x, y, w, h, () => app.playLevel(L.n));
+      hit(x, y, w, h, () => app.playLevel(L.n), 'ui', `level:${L.n}`);
     } else lockIcon(x + w - 14, y + 4, C.greyD);
   });
   const by = SCENE_H + 21 + 4 * 41;
-  button(6, by, 82, 16, 'STORY', C.purple, () => app.openLog());
-  if (shopOpen(app.save)) button(92, by, 82, 16, 'SHOP', C.greenD, () => app.openShop(null));
+  button(6, by, 82, 16, 'STORY', C.purple, () => app.openLog(), 'ui', 'small', 'story');
+  if (shopOpen(app.save)) button(92, by, 82, 16, 'SHOP', C.greenD, () => app.openShop(null), 'ui', 'small', 'shop');
   else {
     button(92, by, 82, 16, '', C.greyDD, null);
     lockIcon(98, by + 3, C.greyD);
     text(`SHOP: LEVEL ${SHOP_FROM_LEVEL}`, 136, by + 6, { color: C.greyD, align: 'center' });
   }
-  text('ART: AROACHIFOUNDONMYPILLOW, KENNEY', 90, H - 14, { align: 'center', color: C.grey });
-  text('(CC0) AND CODE. SEE CREDITS.MD', 90, H - 7, { align: 'center', color: C.grey });
+  text('ART: AROACHIFOUNDONMYPILLOW, KENNEY', 90, 390 - 14, { align: 'center', color: C.grey });
+  text('(CC0) AND CODE. SEE CREDITS.MD', 90, 390 - 7, { align: 'center', color: C.grey });
 }
 
 // ---------- story scene ----------
 const TYPE_RATE = 45; // letters per second
 export function lineLength(d) { return d && d.cur ? d.cur.text.length : 0; }
 export function lineTyped(app) { return Math.floor(app.dlgT * TYPE_RATE) >= lineLength(app.dlg); }
-// The dialogue box sits under the street and fits the line on screen (it
-// eases between sizes); the answers show as buttons under it, on the floor.
+// The street fills the screen; the dialogue box and its answers sit at the
+// bottom, above a short note. The box fits the line on screen and eases
+// between sizes, and the counter rides just above it (portrait), so the
+// street always fills the rest. Wide screens: the spirit at the counter on the
+// left, the box on the right. DLG is where the box is now.
 export const DLG = { x: 4, y: 164, w: 172 };
 const TEXT_W = DLG.w - 14;
 const HEAD_H = 46; // the portrait and name above a spirit's line
 export const dlgLineH = (step) => (!step ? 40 : (step.who === 'STORY' ? 8 : HEAD_H) + wrap(step.text, TEXT_W, 'big').length * 10 + 16);
 export const CHOICE_H = 18, CHOICE_GAP = 22;
+// How much the answers add under the box (0 while there are none).
+export const choicesH = (d, typed) => (d && d.choice && typed ? d.choice.length * CHOICE_GAP + 6 : 0);
 // Where answer k sits (the playtest taps these).
 export function choiceBox(d, k) {
   return { x: DLG.x + 4, y: DLG.y + dlgLineH(d.cur) + 10 + k * CHOICE_GAP, w: DLG.w - 8, h: CHOICE_H };
@@ -113,21 +148,59 @@ export function choiceBox(d, k) {
 // A speaker who is not a spirit (the cold voice in the night 13 epilogue).
 const VOICE = { VOICE: { name: '???', kind: 'A COLD VOICE' } };
 
+// The tallest the box and its answers get in a scene (design px).
+const blockCache = new Map();
+export function sceneBlockH(sc) {
+  if (blockCache.has(sc.id)) return blockCache.get(sc.id);
+  let h = 40;
+  const walk = (steps) => steps.forEach((st, i) => {
+    if (st.choice) {
+      let prev = 40; // the line shown with the answers: the one before (or the ones that may be)
+      for (let j = i - 1; j >= 0; j--) {
+        if (!steps[j].text) continue;
+        prev = Math.max(prev, dlgLineH(steps[j]));
+        if (!steps[j].if && !steps[j].unless) break;
+      }
+      h = Math.max(h, prev + st.choice.length * CHOICE_GAP + 6);
+      st.choice.forEach((o) => walk(o.reply || []));
+    } else if (st.text) h = Math.max(h, dlgLineH(st));
+  });
+  walk(sc.steps);
+  blockCache.set(sc.id, h);
+  return h;
+}
+// Where things go in a story scene: the street S, the dialogue box's top-left
+// (box) and the note at the bottom (note: centre x, y). `now` is the box and
+// answers' height on screen, `blockH` the scene's tallest (sceneBlockH).
+export function sceneLayout(W, H, mode, blockH, now = blockH) {
+  if (mode === 'wide') { // the spirit at the counter on the left, the box on the right
+    const RW = wideRight(W), LW = W - RW;
+    const S = { w: W, h: H, cy: H - 18, d: Math.floor((LW - 180) / 2), sw: LW };
+    // the box and its answers end just above the note at the bottom
+    return { S, box: { x: LW + Math.floor((RW - DLG.w) / 2), y: Math.max(36, H - 20 - blockH) }, note: { x: LW + Math.floor(RW / 2), y: H - 14 } };
+  }
+  const y = Math.max(126, Math.round(H - 20 - now));
+  const cy = y - 26;
+  const S = { w: W, h: H, cy, d: Math.floor((W - 180) / 2), sw: W };
+  return { S, box: { x: Math.floor((W - DLG.w) / 2), y }, note: { x: Math.floor(W / 2), y: H - 14 } };
+}
 function sceneScreen(app) {
   const d = app.dlg, t = app.time, sc = d.scene;
   const def = levelDef(sc.level);
   const frost = !!sc.frost && d.pc >= (sc.frostAt || 0);
-  drawMarket(t, { rain: !!def?.rain, festival: !!def?.festival && !sc.after, frost });
-  if (sc.spirit) drawCustomer(sc.spirit, 98, COUNTER_Y + 2, { t });
-  if (def?.rain) drawRain(t);
-  awningAndCounter(t, { react: sc.dog || SPIRITS[sc.spirit]?.dog || null, frost });
+  const want = dlgLineH(d.cur);
+  const boxH = Math.round(app.dlgH && Math.abs(app.dlgH - want) > 0.5 ? app.dlgH : want);
+  const { S, box, note } = sceneLayout(W, H, LAY.mode, sceneBlockH(sc), boxH + Math.round(app.dlgCH || 0));
+  DLG.x = box.x; DLG.y = box.y;
+  drawMarket(t, { rain: !!def?.rain, festival: !!def?.festival && !sc.after, frost }, S);
+  if (sc.spirit) inScene(() => drawCustomer(sc.spirit, 98, COUNTER_Y + 2, { t }), S);
+  if (def?.rain) drawRain(t, S);
+  awningAndCounter(t, { react: sc.dog || SPIRITS[sc.spirit]?.dog || null, frost }, S, S.h);
   rbox(4, 18, 122, 13, C.ink);
   text(`NIGHT ${sc.level}: ${sc.title.toUpperCase()}`, 8, 22, { color: C.gold });
-  woodFloor();
   hit(0, 14, W, H - 14, () => app.dlgTap(), 'dialog');
   // the dialogue box
-  const want = dlgLineH(d.cur);
-  const B = { ...DLG, h: Math.round(app.dlgH && Math.abs(app.dlgH - want) > 0.5 ? app.dlgH : want) };
+  const B = { ...DLG, h: boxH };
   rbox(B.x, B.y + 2, B.w, B.h, C.ink);
   rbox(B.x, B.y, B.w, B.h, C.cream);
   R(B.x + 2, B.y + 2, B.w - 4, B.h - 4, C.white);
@@ -153,19 +226,24 @@ function sceneScreen(app) {
       if (n > 0) text(r.slice(0, n), B.x + 7, ty + i * 10, { font: 'big', color: who === 'STORY' ? C.purple : C.ink, outline: null });
     });
   }
-  if (d.choice && lineTyped(app)) {
+  if (d.choice && lineTyped(app) && Math.abs((app.dlgCH || 0) - choicesH(d, true)) < 2) {
+    rbox(B.x + 3, B.y + B.h + 1, 50, 9, C.ink);
     text('YOUR ANSWER', B.x + 6, B.y + B.h + 3, { color: C.cream });
     d.choice.forEach((opt, k) => {
       const c = choiceBox(d, k);
-      button(c.x, c.y, c.w, c.h, opt.text.toUpperCase(), C.blueD, () => app.dlgChoose(k), 'choice');
+      button(c.x, c.y, c.w, c.h, opt.text.toUpperCase(), C.blueD, () => app.dlgChoose(k), 'choice', 'small', `choice:${k}`);
       text(String(k + 1), c.x + 5, c.y + 6, { color: C.yellow });
     });
   } else if (lineTyped(app) && Math.floor(t * 2) % 2) {
     text('TAP', B.x + B.w - 22, B.y + B.h - 11, { color: C.greyD, outline: null });
     R(B.x + B.w - 10, B.y + B.h - 10, 5, 1, C.redD); R(B.x + B.w - 9, B.y + B.h - 9, 3, 1, C.redD); R(B.x + B.w - 8, B.y + B.h - 8, 1, 1, C.redD);
   }
-  button(130, 18, 46, 14, d.replay ? 'CLOSE' : 'SKIP', C.steelD, () => app.dlgSkip(), 'skip');
-  if (!d.replay) text('CHOICES NEVER BLOCK. SKIP ANY TIME.', 90, H - 14, { align: 'center', color: C.grey });
+  withOrigin(W - 180, 0, () => button(130, 18, 46, 14, d.replay ? 'CLOSE' : 'SKIP', C.steelD, () => app.dlgSkip(), 'skip', 'small', 'skip'), [128, 14, 180, 36]);
+  if (!d.replay) {
+    const str = 'CHOICES NEVER BLOCK. SKIP ANY TIME.';
+    rbox(note.x - Math.ceil(tw(str) / 2) - 4, note.y - 3, tw(str) + 8, 10, C.ink);
+    text(str, note.x, note.y, { align: 'center', color: C.grey });
+  }
 }
 // The cold voice: no face, only frost and two pale eyes.
 function drawVoice(x, y, t) {
@@ -177,88 +255,110 @@ function drawVoice(x, y, t) {
 // ---------- story log ----------
 export const LOG_PAGE = 6;
 export const logPages = () => Math.ceil(SCENES.length / LOG_PAGE);
+// One column of six nights (portrait), or two columns of three (wide).
+export function logEntryBox(i, wide) {
+  return wide ? { x: 6 + Math.floor(i / 3) * 176, y: 42 + (i % 3) * 44, w: 168, h: 40 } : { x: 6, y: 42 + i * 44, w: 168, h: 40 };
+}
 function logScreen(app) {
-  const st = app.save.story;
+  const st = app.save.story, wide = isWide();
   R(0, 0, W, H, C.night0);
   for (let y = 0; y < H; y += 4) R(0, y, W, 1, C.night1);
-  text('STORY SO FAR', 90, 20, { font: 'big', align: 'center', color: C.gold });
-  text('TAP A NIGHT TO READ IT AGAIN', 90, 31, { align: 'center', color: C.grey });
-  const page = Math.min(app.logPage || 0, logPages() - 1);
-  SCENES.slice(page * LOG_PAGE, (page + 1) * LOG_PAGE).forEach((sc, i) => {
-    const y = 42 + i * 44, x = 6, w = 168, h = 40;
-    const seen = !!st.seen[sc.id];
-    rbox(x, y + 1, w, h, C.ink);
-    rbox(x, y, w, h, seen ? C.cream : C.greyDD);
-    if (!seen) {
-      text(`NIGHT ${sc.level}`, x + 6, y + 8, { color: C.greyD, outline: null });
-      text('NOT YET', x + 6, y + 18, { font: 'big', color: C.greyD, outline: null });
-      lockIcon(x + w - 16, y + 14, C.greyD);
-      return;
+  // Design block: 180 (or 352) wide; the footer sits under the nights.
+  const bw = wide ? 352 : 180, rows = wide ? 3 : LOG_PAGE;
+  const fy = 42 + rows * 44 + 6; // the buttons
+  const bh = wide ? fy + 70 : 390;
+  const dx = Math.floor((W - bw) / 2), dy = Math.max(0, Math.floor((H - bh) / 2));
+  withOrigin(dx, dy, () => {
+    const cx = bw / 2;
+    text('STORY SO FAR', cx, 20, { font: 'big', align: 'center', color: C.gold });
+    text('TAP A NIGHT TO READ IT AGAIN', cx, 31, { align: 'center', color: C.grey });
+    const page = Math.min(app.logPage || 0, logPages() - 1);
+    SCENES.slice(page * LOG_PAGE, (page + 1) * LOG_PAGE).forEach((sc, i) => {
+      const { x, y, w, h } = logEntryBox(i, wide);
+      const seen = !!st.seen[sc.id];
+      rbox(x, y + 1, w, h, C.ink);
+      rbox(x, y, w, h, seen ? C.cream : C.greyDD);
+      if (!seen) {
+        text(`NIGHT ${sc.level}`, x + 6, y + 8, { color: C.greyD, outline: null });
+        text('NOT YET', x + 6, y + 18, { font: 'big', color: C.greyD, outline: null });
+        lockIcon(x + w - 16, y + 14, C.greyD);
+        return;
+      }
+      rbox(x + 4, y + 4, 32, 32, C.night1);
+      const sp = SPIRITS[sc.spirit];
+      if (sp) drawPortrait(sc.spirit, x + 4, y + 4, 2, app.time);
+      else drawShiba(x + 20, y + 35, { t: app.time, react: 'growl' });
+      text(sc.after ? `AFTER NIGHT ${sc.level}` : `NIGHT ${sc.level}: ${sp.name}`, x + 42, y + 6, { color: C.redD, outline: null });
+      text(sc.title.toUpperCase(), x + 42, y + 15, { color: C.ink, outline: null });
+      if (sp) {
+        const got = st.memories[sc.spirit] || 0;
+        text(`MEMORIES ${got}/${sp.memories.length}`, x + 42, y + 26, { color: got ? C.purple : C.greyD, outline: null });
+      } else text('TO BE CONTINUED', x + 42, y + 26, { color: C.purple, outline: null });
+      hit(x, y, w, h, () => app.replayScene(sc.id), 'ui', `scene:${sc.id}`);
+    });
+    if (logPages() > 1) {
+      if (page > 0) button(6, fy, 38, 16, '<', C.blueD, () => app.setLogPage(page - 1), 'ui', 'big', 'logprev');
+      if (page < logPages() - 1) button(bw - 44, fy, 38, 16, '>', C.blueD, () => app.setLogPage(page + 1), 'ui', 'big', 'lognext');
+      text(`PAGE ${page + 1}/${logPages()}`, cx, fy - 8, { align: 'center', color: C.grey });
     }
-    rbox(x + 4, y + 4, 32, 32, C.night1);
-    const sp = SPIRITS[sc.spirit];
-    if (sp) drawPortrait(sc.spirit, x + 4, y + 4, 2, app.time);
-    else drawShiba(x + 20, y + 35, { t: app.time, react: 'growl' });
-    text(sc.after ? `AFTER NIGHT ${sc.level}` : `NIGHT ${sc.level}: ${sp.name}`, x + 42, y + 6, { color: C.redD, outline: null });
-    text(sc.title.toUpperCase(), x + 42, y + 15, { color: C.ink, outline: null });
-    if (sp) {
-      const got = st.memories[sc.spirit] || 0;
-      text(`MEMORIES ${got}/${sp.memories.length}`, x + 42, y + 26, { color: got ? C.purple : C.greyD, outline: null });
-    } else text('TO BE CONTINUED', x + 42, y + 26, { color: C.purple, outline: null });
-    hit(x, y, w, h, () => app.replayScene(sc.id));
-  });
-  if (logPages() > 1) {
-    if (page > 0) button(6, 312, 38, 16, '<', C.blueD, () => app.setLogPage(page - 1), 'ui', 'big');
-    if (page < logPages() - 1) button(136, 312, 38, 16, '>', C.blueD, () => app.setLogPage(page + 1), 'ui', 'big');
-    text(`PAGE ${page + 1}/${logPages()}`, 90, 304, { align: 'center', color: C.grey });
-  }
-  button(50, 312, 80, 16, 'BACK', C.steelD, () => app.toTitle());
-  const flags = Object.keys(st.flags).length;
-  text(flags ? `CHOICES MADE: ${flags}` : 'NO CHOICES MADE YET', 90, 336, { align: 'center', color: C.grey });
-  drawShiba(90, 382, { t: app.time, react: st.flags.bell_known ? 'wag' : null });
+    button(cx - 40, fy, 80, 16, 'BACK', C.steelD, () => app.toTitle(), 'ui', 'small', 'back');
+    const flags = Object.keys(st.flags).length;
+    text(flags ? `CHOICES MADE: ${flags}` : 'NO CHOICES MADE YET', cx, fy + 24, { align: 'center', color: C.grey });
+    drawShiba(cx, wide ? fy + 64 : 382, { t: app.time, react: st.flags.bell_known ? 'wag' : null });
+  }, [0, 0, 180, 390]);
 }
 
 // ---------- shop ----------
 const UP_ART = { grill4: 'galbi', tray5: 'kimbap', fastfry: 'chicken', patience: 'lantern', wokfast: 'friedrice' };
+// One column of five upgrades (portrait), or two columns (wide).
+export function shopCardBox(i, wide) {
+  return wide ? { x: 6 + Math.floor(i / 3) * 176, y: 60 + (i % 3) * 46, w: 168, h: 42 } : { x: 6, y: 60 + i * 46, w: 168, h: 42 };
+}
 function shopScreen(app) {
-  const s = app.save, t = app.time;
+  const s = app.save, t = app.time, wide = isWide();
   R(0, 0, W, H, C.night0);
   for (let y = 0; y < H; y += 4) R(0, y, W, 1, C.night1);
   for (let x = 0; x < W; x += 10) { const c = (x / 10) % 2 ? C.cream : C.green; R(x, 14, 10, 8, c); R(x + 1, 22, 8, 2, c); }
-  text('STALL UPGRADES', 90, 30, { font: 'big', align: 'center', color: C.gold });
-  rbox(64, 41, 52, 13, C.ink);
-  coinIcon(68, 44);
-  text(String(s.wallet), 78, 45, { color: C.yellow });
-  UPGRADES.forEach((u, i) => {
-    const x = 6, y = 60 + i * 46, w = 168, h = 42;
-    const owned = !!s.upgrades[u.id];
-    const can = canBuy({ wallet: s.wallet, upgrades: s.upgrades }, u.id);
-    rbox(x, y + 1, w, h, C.ink);
-    rbox(x, y, w, h, owned ? mix(C.cream, C.greenL, 0.35) : C.cream);
-    rbox(x + 4, y + 4, 34, 34, C.night1);
-    if (UP_ART[u.id] === 'lantern') drawPortrait('lantern', x + 5, y + 5, 2, t);
-    else if (u.id === 'tray5') { // a little tray with five things on it
-      rbox(x + 6, y + 20, 30, 12, C.woodL); R(x + 7, y + 21, 28, 10, C.wood);
-      ['soda', 'kimbap', 'toast', 'tea', 'galbi'].forEach((id, k) => drawItem(id, x + 3 + k * 5, y + 10 + (k % 2) * 3));
-    } else drawItem(UP_ART[u.id], x + 5, y + 5, { scale: 2 });
-    text(u.name, x + 43, y + 6, { color: C.ink, outline: null });
-    text(u.desc, x + 43, y + 15, { color: C.greyD, outline: null });
-    if (owned) text('OWNED', x + 43, y + 28, { color: C.greenD, outline: null });
-    else {
-      coinIcon(x + 43, y + 27);
-      text(String(u.cost), x + 53, y + 28, { color: can ? C.ink : C.redD, outline: null });
-      button(x + w - 46, y + 23, 40, 14, 'BUY', can ? C.greenD : C.greyD, can ? () => app.buy(u.id) : () => app.cantBuy(u.id), 'buy');
+  const bw = wide ? 352 : 180, rows = wide ? 3 : UPGRADES.length;
+  const y0 = 60 + rows * 46 + 4;
+  const bh = wide ? y0 + 56 : 390;
+  const dx = Math.floor((W - bw) / 2), dy = Math.max(0, Math.floor((H - bh) / 2));
+  withOrigin(dx, dy, () => {
+    const cx = bw / 2;
+    text('STALL UPGRADES', cx, 30, { font: 'big', align: 'center', color: C.gold });
+    rbox(cx - 26, 41, 52, 13, C.ink);
+    coinIcon(cx - 22, 44);
+    text(String(s.wallet), cx - 12, 45, { color: C.yellow });
+    UPGRADES.forEach((u, i) => {
+      const { x, y, w, h } = shopCardBox(i, wide);
+      const owned = !!s.upgrades[u.id];
+      const can = canBuy({ wallet: s.wallet, upgrades: s.upgrades }, u.id);
+      rbox(x, y + 1, w, h, C.ink);
+      rbox(x, y, w, h, owned ? mix(C.cream, C.greenL, 0.35) : C.cream);
+      rbox(x + 4, y + 4, 34, 34, C.night1);
+      if (UP_ART[u.id] === 'lantern') drawPortrait('lantern', x + 5, y + 5, 2, t);
+      else if (u.id === 'tray5') { // a little tray with five things on it
+        rbox(x + 6, y + 20, 30, 12, C.woodL); R(x + 7, y + 21, 28, 10, C.wood);
+        ['soda', 'kimbap', 'toast', 'tea', 'galbi'].forEach((id, k) => drawItem(id, x + 3 + k * 5, y + 10 + (k % 2) * 3));
+      } else drawItem(UP_ART[u.id], x + 5, y + 5, { scale: 2 });
+      text(u.name, x + 43, y + 6, { color: C.ink, outline: null });
+      text(u.desc, x + 43, y + 15, { color: C.greyD, outline: null });
+      if (owned) text('OWNED', x + 43, y + 28, { color: C.greenD, outline: null });
+      else {
+        coinIcon(x + 43, y + 27);
+        text(String(u.cost), x + 53, y + 28, { color: can ? C.ink : C.redD, outline: null });
+        button(x + w - 46, y + 23, 40, 14, 'BUY', can ? C.greenD : C.greyD, can ? () => app.buy(u.id) : () => app.cantBuy(u.id), 'buy', 'small', `buy:${u.id}`);
+      }
+    });
+    const next = app.shopNext;
+    text('COINS FROM EVERY NIGHT GO IN YOUR PURSE', cx, y0, { align: 'center', color: C.grey });
+    button(cx - 60, y0 + 12, 120, 18, next ? `ON TO LEVEL ${next}` : 'DONE', C.blueD, () => app.leaveShop(), 'ui', 'big', 'leave');
+    if (app.shopMsg && app.time - app.shopMsg.at < 1.6) {
+      const m = app.shopMsg.text, w = tw(m, 'big') + 12;
+      rbox(cx - w / 2, y0 + 36, w, 15, app.shopMsg.good ? C.greenD : C.redD);
+      text(m, cx, y0 + 40, { font: 'big', align: 'center', color: C.white });
     }
-  });
-  const next = app.shopNext;
-  const y0 = 60 + UPGRADES.length * 46 + 4;
-  text('COINS FROM EVERY NIGHT GO IN YOUR PURSE', 90, y0, { align: 'center', color: C.grey });
-  button(30, y0 + 12, 120, 18, next ? `ON TO LEVEL ${next}` : 'DONE', C.blueD, () => app.leaveShop(), 'ui', 'big');
-  if (app.shopMsg && app.time - app.shopMsg.at < 1.6) {
-    const m = app.shopMsg.text, w = tw(m, 'big') + 12;
-    rbox(W / 2 - w / 2, y0 + 36, w, 15, app.shopMsg.good ? C.greenD : C.redD);
-    text(m, W / 2, y0 + 40, { font: 'big', align: 'center', color: C.white });
-  }
+  }, [0, 14, 180, 390]);
 }
 
 // ---------- settings ----------
@@ -280,12 +380,16 @@ function slider(key, labelStr, v, y) {
   const kx = x + Math.round(v * w) - 3;
   rbox(kx, ty - 4, 7, 12, C.redD);
   R(kx + 2, ty - 2, 3, 1, C.redL);
-  hit(x - 10, y - 4, w + 20, 29, () => {}, `slider:${key}`);
+  hit(x - 10, y - 4, w + 20, 29, () => {}, `slider:${key}`, `slider:${key}`); // main.js reads the track from this rect (10 px in from each side)
 }
 function settingsPanel(app) {
   clearHits();
   dim();
   hit(0, 0, W, H, () => app.closeSettings(), 'backdrop');
+  centered(() => settingsCard(app), SET_Y, SET_Y + SET_H + 2);
+  if (app.confirmReset) resetConfirm(app);
+}
+function settingsCard(app) {
   const x = 10, w = 160, h = SET_H;
   panel(x, SET_Y, w, h);
   hit(x, SET_Y, w, h, () => {}, 'panel'); // taps on the card do not close it
@@ -299,15 +403,14 @@ function settingsPanel(app) {
   text('TAP CONTROLS', SLIDER.x, ty + 2, { font: 'big', color: C.ink, outline: null });
   toggle(SLIDER.x + SLIDER.w - 24, ty, tapMode(app));
   text(tapMode(app) ? 'TAP A BIN, THEN A STATION' : 'OFF: DRAG FOOD WITH A FINGER', SLIDER.x, ty + 15, { color: C.greyD, outline: null });
-  hit(x + 4, ty - 4, w - 8, 28, () => app.toggleTapControls());
-  button(SLIDER.x, SET_Y + 156, SLIDER.w, 18, app.muted ? 'SOUND: MUTED' : 'SOUND: ON', app.muted ? C.redD : C.steelD, () => app.toggleMute());
-  button(SLIDER.x, SET_Y + 182, SLIDER.w, 18, app.g && app.g.phase === 'play' && app.screen === 'game' ? 'RESUME' : 'DONE', C.greenD, () => app.closeSettings());
+  hit(x + 4, ty - 4, w - 8, 28, () => app.toggleTapControls(), 'ui', 'tapcontrols');
+  button(SLIDER.x, SET_Y + 156, SLIDER.w, 18, app.muted ? 'SOUND: MUTED' : 'SOUND: ON', app.muted ? C.redD : C.steelD, () => app.toggleMute(), 'ui', 'small', 'sound');
+  button(SLIDER.x, SET_Y + 182, SLIDER.w, 18, app.g && app.g.phase === 'play' && app.screen === 'game' ? 'RESUME' : 'DONE', C.greenD, () => app.closeSettings(), 'ui', 'small', 'resume');
   // Danger zone: a gap and a dashed red rule keep it away from RESUME.
   for (let dx = x + 8; dx < x + w - 8; dx += 4) R(dx, SET_Y + 212, 2, 1, C.redL);
   const b = RESET_BTN;
-  button(b.x, b.y, b.w, b.h, RESET_TEXT.button, C.red, () => app.askReset());
+  button(b.x, b.y, b.w, b.h, RESET_TEXT.button, C.red, () => app.askReset(), 'ui', 'small', 'reset');
   text(RESET_TEXT.note, 90, b.y + b.h + 5, { align: 'center', color: C.greyD, outline: null });
-  if (app.confirmReset) resetConfirm(app);
 }
 
 // Are you sure? KEEP is the big default; a tap outside the card also keeps.
@@ -317,6 +420,11 @@ function resetConfirm(app) {
   clearHits();
   dim(0.6);
   hit(0, 0, W, H, () => app.keepProgress(), 'backdrop');
+  // Placed as if the settings card were still under it (a tap on RESET
+  // PROGRESS can never land on RESET).
+  centered(() => confirmCard(app), SET_Y, SET_Y + SET_H + 2);
+}
+function confirmCard(app) {
   const { x, y, w, h } = CONFIRM;
   panel(x, y, w, h);
   hit(x, y, w, h, () => {}, 'panel');
@@ -327,8 +435,8 @@ function resetConfirm(app) {
   ty += 3;
   text(RESET_TEXT.kept, 90, ty, { align: 'center', color: C.greenD, outline: null });
   text(RESET_TEXT.undo, 90, ty + 9, { align: 'center', color: C.redD, outline: null });
-  button(x + 12, y + 84, w - 24, 22, RESET_TEXT.keep, C.greenD, () => app.keepProgress(), 'ui', 'big');
-  button(x + 34, y + 120, w - 68, 16, RESET_TEXT.reset, C.red, () => app.resetProgress());
+  button(x + 12, y + 84, w - 24, 22, RESET_TEXT.keep, C.greenD, () => app.keepProgress(), 'ui', 'big', 'keep');
+  button(x + 34, y + 120, w - 68, 16, RESET_TEXT.reset, C.red, () => app.resetProgress(), 'ui', 'small', 'confirmreset');
 }
 
 // ---------- level intro card ----------
@@ -394,13 +502,18 @@ function introPreview(app, g) {
   }
 }
 function introCard(app) {
-  const g = app.g, t = app.time, it = g.def.intro;
   clearHits();
   dim();
-  const lines = it[tapMode(app) ? 'tap' : 'drag'];
-  const rowsAll = lines.map((l) => wrap(l.toUpperCase(), 136));
-  const ph = 137 + rowsAll.reduce((a, r) => a + r.length * 8 + 4, 0);
-  const oy = Math.round((H - ph) / 2) - 70;
+  hit(0, 0, W, H, () => app.startLevel(), 'overlay', 'start');
+  const ph = introHeight(app);
+  const oy = Math.round((390 - ph) / 2) - 70;
+  centered(() => introBody(app, ph, oy), 70 + oy, 72 + oy + ph, 14);
+}
+const introRows = (app) => app.g.def.intro[tapMode(app) ? 'tap' : 'drag'].map((l) => wrap(l.toUpperCase(), 136));
+export const introHeight = (app) => 137 + introRows(app).reduce((a, r) => a + r.length * 8 + 4, 0);
+function introBody(app, ph, oy) {
+  const g = app.g, t = app.time, it = g.def.intro;
+  const rowsAll = introRows(app);
   panel(10, 70 + oy, 160, ph);
   text(g.endless ? 'NO STARS, NO LAST GUEST' : `LEVEL ${g.level}`, 90, 78 + oy, { align: 'center', color: C.redD, outline: null });
   text(g.def.title.toUpperCase(), 90, 86 + oy, { font: 'big', align: 'center', color: C.ink, outline: null });
@@ -415,7 +528,6 @@ function introCard(app) {
     y += 4;
   }
   button(40, y + 4, 100, 16, 'TAP TO START', Math.floor(t * 2) % 2 ? C.greenD : C.green, null);
-  hit(0, 0, W, H, () => app.startLevel(), 'overlay');
 }
 function withOffset(dy, fn) {
   const ctx = getCtx();
@@ -434,6 +546,9 @@ export function nextNote(next) {
 }
 // Endless nights end with a score instead of stars.
 function endlessEnd(app) {
+  centered(() => endlessCard(app), 52, 326, 14);
+}
+function endlessCard(app) {
   const g = app.g;
   panel(12, 52, 156, 272);
   text('NIGHT OVER', 90, 62, { font: 'big', align: 'center', color: C.redD, outline: null });
@@ -459,15 +574,18 @@ function endlessEnd(app) {
     R(26, y + 8, 128, 1, C.cream);
   });
   drawShiba(90, 270, { big: true, scale: 3, mood: best ? 'happy' : 'wait', t: app.time });
-  button(22, 280, 64, 18, 'AGAIN', C.blueD, () => app.newLevel(g.level));
-  button(94, 280, 64, 18, 'MENU', C.greenD, () => app.toTitle());
+  button(22, 280, 64, 18, 'AGAIN', C.blueD, () => app.newLevel(g.level), 'ui', 'small', 'again');
+  button(94, 280, 64, 18, 'MENU', C.greenD, () => app.toTitle(), 'ui', 'small', 'menu');
   text('EVERY NIGHT IS DIFFERENT', 90, 304, { align: 'center', color: C.greyD, outline: null });
 }
 function endScreen(app) {
-  const g = app.g, t = app.time - (app.endAt || 0);
   clearHits();
   dim();
-  if (g.endless) return endlessEnd(app);
+  if (app.g.endless) return endlessEnd(app);
+  centered(() => endCard(app), 52, 326, 14);
+}
+function endCard(app) {
+  const g = app.g, t = app.time - (app.endAt || 0);
   panel(12, 52, 156, 272);
   const ok = g.stars > 0;
   text(ok ? 'STALL CLOSED!' : 'TOUGH NIGHT...', 90, 62, { font: 'big', align: 'center', color: ok ? C.greenD : C.redD, outline: null });
@@ -504,11 +622,11 @@ function endScreen(app) {
   const shopNext = ok && g.level >= SHOP_FROM_LEVEL;
   const after = afterSceneFor(g.level);
   const epilogue = ok && after && !app.save.story.seen[after.id];
-  button(22, 280, 64, 18, 'RETRY', C.blueD, () => app.newLevel(g.level));
-  if (epilogue) button(94, 280, 64, 18, 'GO ON', Math.floor(app.time * 2) % 2 ? C.purple : C.redD, () => app.playAfter(after));
-  else if (ok && next) button(94, 280, 64, 18, shopNext ? 'SHOP' : 'NEXT', C.greenD, () => app.endNext());
-  else if (shopNext) button(94, 280, 64, 18, 'SHOP', C.greenD, () => app.openShop(null));
-  else button(94, 280, 64, 18, 'MENU', ok ? C.greenD : C.steelD, () => app.toTitle());
+  button(22, 280, 64, 18, 'RETRY', C.blueD, () => app.newLevel(g.level), 'ui', 'small', 'retry');
+  if (epilogue) button(94, 280, 64, 18, 'GO ON', Math.floor(app.time * 2) % 2 ? C.purple : C.redD, () => app.playAfter(after), 'ui', 'small', 'next');
+  else if (ok && next) button(94, 280, 64, 18, shopNext ? 'SHOP' : 'NEXT', C.greenD, () => app.endNext(), 'ui', 'small', 'next');
+  else if (shopNext) button(94, 280, 64, 18, 'SHOP', C.greenD, () => app.openShop(null), 'ui', 'small', 'next');
+  else button(94, 280, 64, 18, 'MENU', ok ? C.greenD : C.steelD, () => app.toTitle(), 'ui', 'small', 'menu');
   let note = 'NEED 1 STAR TO OPEN THE NEXT LEVEL';
   if (ok && next && shopNext) note = `UPGRADES, THEN LEVEL ${next.n}`;
   else if (ok && next) note = nextNote(next);
@@ -520,6 +638,9 @@ function endScreen(app) {
 // ---------- cast sheet (debug: ?shot=cast) ----------
 function castScreen(app) {
   R(0, 0, W, H, C.night2);
+  centered(() => castSheet(app));
+}
+function castSheet(app) {
   const t = app.time;
   const cast = [...SPIRIT_IDS, 'shiba', 0, 3];
   cast.forEach((look, i) => {

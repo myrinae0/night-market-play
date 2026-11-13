@@ -73,13 +73,16 @@ export const sauceSuits = (id, item) => {
 // (`air` seconds after the last one) spills a little; after `idleSafe` seconds
 // without a toss the food starts to scorch and is burnt `scorchTime` later.
 export const COOK = {
-  grill: { time: 4.5, done: 0.7, perfectLo: 0.85, perfectHi: 1.08, burnt: 1.25, max: 1.5, upRate: 0.08 },
-  fry: { time: 6.5, done: 0.75, perfectLo: 0.9, perfectHi: 1.06, burnt: 1.2, max: 1.5 },
-  wok: { perToss: 0.15, done: 0.75, perfectLo: 0.88, perfectHi: 1.1, burnt: 99, max: 1.2, air: 0.32, idleSafe: 2.2, scorchTime: 2.6, spillLoss: 0.1 },
+  // The good (done..burnt) and perfect windows are about 1.5 times as wide as
+  // in the first build (Chris: "flipping is too harsh"), centred where they were.
+  grill: { time: 4.5, done: 0.62, perfectLo: 0.8, perfectHi: 1.15, burnt: 1.45, max: 1.7, upRate: 0.08 },
+  fry: { time: 6.5, done: 0.68, perfectLo: 0.86, perfectHi: 1.1, burnt: 1.36, max: 1.6 },
+  // Wok: tosses cook it; it only burns by sitting still (idleSafe, then scorchTime).
+  wok: { perToss: 0.15, done: 0.7, perfectLo: 0.82, perfectHi: 1.16, burnt: 99, max: 1.25, air: 0.32, idleSafe: 2.8, scorchTime: 3.2, spillLoss: 0.1 },
   // Steamer: cooks only while the lid is on; leave it too long and it goes soggy.
-  steam: { time: 7, done: 0.75, perfectLo: 0.9, perfectHi: 1.14, burnt: 1.4, max: 1.6 },
+  steam: { time: 7, done: 0.68, perfectLo: 0.84, perfectHi: 1.2, burnt: 1.65, max: 1.9 },
   // Noodle pot: the water takes `boil` seconds to boil; then the noodles cook.
-  pot: { boil: 3, time: 5.5, done: 0.75, perfectLo: 0.9, perfectHi: 1.08, burnt: 1.3, max: 1.5 },
+  pot: { boil: 3, time: 5.5, done: 0.68, perfectLo: 0.855, perfectHi: 1.125, burnt: 1.5, max: 1.75 },
 };
 
 export const GRILL_SLOTS = 3;
@@ -98,7 +101,7 @@ export const LEVELS = [
     intro: {
       station: 'counter',
       heading: 'THE COUNTER',
-      drag: ['Read the order bubble.', 'Drag drinks and food down onto your tray.', 'Drag the tray handle up onto the guest to serve.'],
+      drag: ['Read the order bubble.', 'Drag drinks and food down onto your tray.', 'Tap SERVE to hand the tray over.'],
       tap: ['Read the order bubble.', 'Tap items to put them on your tray.', 'Tap SERVE to hand it over.'],
     },
   },
@@ -107,7 +110,7 @@ export const LEVELS = [
     intro: {
       station: 'grill',
       heading: 'NEW: THE GRILL',
-      drag: ['Swipe empty space or tap a tab to switch stations.', 'Drag meat onto the grill. Flick it up to flip.', 'Drag it to the tray when both bars are green.'],
+      drag: ['Swipe empty space or tap a tab to switch stations.', 'Drag meat onto the grill. Tap it to flip.', 'Drag it to the tray when both bars are green.'],
       tap: ['Swipe left or right to switch stations.', 'Grill both sides: FLIP, then TAKE when the bars are green.', 'Add a glaze on the tray if they ask.'],
     },
   },
@@ -125,7 +128,7 @@ export const LEVELS = [
     intro: {
       station: 'wok',
       heading: 'NEW: THE WOK',
-      drag: ['Drag rice cakes, noodles or rice into the wok.', 'Flick up on the wok to toss. Let it land first!', 'Stop tossing and it scorches. Drag egg or scallion on top.'],
+      drag: ['Drag rice cakes, noodles or rice into the wok.', 'Tap the wok to toss. Let it land first!', 'Stop tossing and it scorches. Drag egg or scallion on top.'],
       tap: ['Tap rice cakes, noodles or rice to start a dish.', 'Tap TOSS (or the wok). Let it land between tosses!', 'Stop tossing and it scorches. TAKE it when it is done.'],
     },
   },
@@ -143,7 +146,7 @@ export const LEVELS = [
     intro: {
       station: 'counter',
       heading: 'NEW: A LINE OF GUESTS',
-      drag: ['Up to three guests wait at once.', 'Each ticket has its own patience.', 'Drag the tray onto any guest whose order is ready.'],
+      drag: ['Up to three guests wait at once.', 'Each ticket has its own patience.', 'Tap SERVE: it finds the guest whose order is ready.'],
       tap: ['Up to three guests wait at once.', 'Each ticket has its own patience.', 'Tap a guest to serve them. SERVE finds a match.'],
     },
   },
@@ -153,7 +156,7 @@ export const LEVELS = [
     intro: {
       station: 'steamer',
       heading: 'NEW: THE STEAMER',
-      drag: ['Drag mandu or buns into a basket.', 'Drag a lid on. It only steams with the lid on.', 'Flick up to lift the lid, then drag it to the tray.'],
+      drag: ['Drag mandu or buns into a basket.', 'Drag a lid on. It only steams with the lid on.', 'Tap the lid to lift it, then drag it to the tray.'],
       tap: ['Tap mandu or buns. They go in with the lid on.', 'Watch the bar. TAKE it in the gold.', 'Dips go on mandu only. A bun stays plain.'],
     },
   },
