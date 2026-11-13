@@ -6,9 +6,10 @@
 //   C  (Em G A D)     breather: bells lead, sparse plucks, soft drum
 // Voices: a gayageum-like pluck (bright attack, fast filter decay, a small
 // pull into the note and a bend on long notes), a two-partial bell, a soft
-// triangle bass, a quiet pad, a janggu-like hand drum, woodblock, shaker and a
-// faint crowd-murmur noise bed. Works with an AudioContext or an
-// OfflineAudioContext (tools/render-music.js renders a WAV with it).
+// triangle bass, a quiet pad, a janggu-like hand drum, woodblock and shaker.
+// The crowd murmur and other market sounds are in ambience.js (their own
+// volume). Works with an AudioContext or an OfflineAudioContext
+// (tools/render-music.js renders a WAV with it).
 
 export const BPM = 100;
 export const STEP = 60 / BPM / 4; // a 16th note
@@ -154,27 +155,6 @@ export function createMusic(ac, dest) {
     }
   }
 
-  // Faint crowd murmur: looped noise through a soft band-pass with a slow swell.
-  let bed = null;
-  function startBed(t) {
-    if (bed) return;
-    const s = ac.createBufferSource(), fl = ac.createBiquadFilter(), g = ac.createGain();
-    const lfo = ac.createOscillator(), lg = ac.createGain();
-    s.buffer = noise; s.loop = true;
-    fl.type = 'bandpass'; fl.frequency.value = 650; fl.Q.value = 0.8;
-    g.gain.value = 0.012;
-    lfo.frequency.value = 0.11; lg.gain.value = 0.005;
-    lfo.connect(lg); lg.connect(g.gain);
-    s.connect(fl); fl.connect(g); g.connect(bus);
-    s.start(t); lfo.start(t);
-    bed = { s, lfo };
-  }
-  function stopBed(t) {
-    if (!bed) return;
-    try { bed.s.stop(t); bed.lfo.stop(t); } catch { /* already stopped */ }
-    bed = null;
-  }
-
   // Everything that starts on one 16th-note step of the loop.
   function scheduleStep(step, t) {
     const barN = Math.floor(step / BAR_STEPS), s = step % BAR_STEPS;
@@ -200,8 +180,6 @@ export function createMusic(ac, dest) {
   return {
     bus,
     scheduleStep,
-    startBed,
-    stopBed,
     // A short cheerful flourish for the end of a level.
     sting(t) {
       [62, 64, 66, 69, 71, 74].forEach((m, i) => pluck(t + i * 0.09, m, i === 5 ? 4 : 1, 0.11));
@@ -241,7 +219,6 @@ export function createPlayer(ac, dest, { volume = 0.7 } = {}) {
       out.gain.cancelScheduledValues(t);
       out.gain.setValueAtTime(out.gain.value, t);
       out.gain.linearRampToValueAtTime(volume, t + 1.5);
-      m.startBed(t);
       nextT = t + 0.1;
       tick();
     },
@@ -253,7 +230,6 @@ export function createPlayer(ac, dest, { volume = 0.7 } = {}) {
       out.gain.cancelScheduledValues(t);
       out.gain.setValueAtTime(out.gain.value, t);
       out.gain.linearRampToValueAtTime(0, t + 0.3);
-      m.stopBed(t + 0.35);
     },
     // Live volume change from the settings slider.
     setVolume(v) {

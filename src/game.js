@@ -1,30 +1,40 @@
 // Game state and player actions (no DOM). The renderer reads state; main.js
-// turns input into these actions and plays the events they emit.
-import { ITEMS, SAUCES, COOK, GRILL_SLOTS, FRY_BASKETS, TRAY_MAX, STATION_ORDER, STATIONS } from './data.js';
+// turns input (drags or taps) into these actions and plays the events they emit.
+import { ITEMS, SAUCES, FRY_BASKETS, STATION_ORDER, STATIONS } from './data.js';
 import {
   levelDef, makeOrders, newGrillItem, stepGrill, flipGrill, grillState, grillPerfect,
   newFryItem, stepFry, fryState, isPerfect, trayItem, canSauce, scoreServe, levelMax, starsFor,
-  stationStatus,
+  stationStatus, newWokItem, stepWok, tossWok, wokState, wokPerfect, upgradeEffects, cookSpecs,
 } from './logic.js';
+import { SPIRITS } from './spirits.js';
 
 const ENTER_TIME = 0.8;
 const LEAVE_TIME = 1.0;
 const DIP_TIME = 0.45;
+const ARRIVE_GAP = 3.5; // queue levels: seconds between new guests joining the line
 
+// opts: seed, upgrades ({ id: true }), relTips ({ spirit: coins }),
+// autoBasket (tap controls: battered chicken drops into a basket by itself).
 export function createGame(levelN, opts = {}) {
   const def = levelDef(levelN);
   const orders = makeOrders(levelN, opts.seed);
+  const fx = upgradeEffects(opts.upgrades);
   const g = {
     level: levelN, def, orders, max: levelMax(orders),
     phase: 'intro', time: 0,
-    custIdx: -1, customer: null,
+    custIdx: -1, customer: null, line: [], queueMax: def.queue || 1, arriveT: 0, nextId: 1,
     coins: 0, served: 0, lost: 0, results: [],
     stations: STATION_ORDER.map((id) => ({ id, status: stationStatus(levelN, id, STATIONS) })),
     station: STATION_ORDER.indexOf(def.intro.station),
-    grill: new Array(GRILL_SLOTS).fill(null),
+    grill: new Array(fx.grillSlots).fill(null),
     fryer: { bowl: null, baskets: new Array(FRY_BASKETS).fill(null) },
-    tray: [],
-    held: null, // a sauce id waiting for a tray target
+    wok: null,
+    tray: [], trayMax: fx.trayMax,
+    cook: cookSpecs(opts.upgrades),
+    patienceMul: fx.patienceMul,
+    relTips: opts.relTips || {},
+    autoBasket: opts.autoBasket !== false,
+    held: null, // a sauce id waiting for a tray target (tap controls)
     events: [],
     stars: 0,
   };
@@ -42,28 +52,42 @@ export function takeEvents(g) {
 export function start(g) {
   if (g.phase !== 'intro') return;
   g.phase = 'play';
-  nextCustomer(g);
+  arrive(g);
 }
 
-function nextCustomer(g) {
+// The next guest joins the line.
+function arrive(g) {
+  if (g.custIdx + 1 >= g.orders.length) return false;
   g.custIdx += 1;
-  if (g.custIdx >= g.orders.length) {
-    g.customer = null;
-    endLevel(g);
-    return;
-  }
   const o = g.orders[g.custIdx];
-  g.customer = { order: o, patience: o.patience, maxPatience: o.patience, phase: 'enter', t: 0, mood: 'wait', result: null };
+  const sp = typeof o.look === 'string' ? SPIRITS[o.look] : null;
+  const p = o.patience * g.patienceMul;
+  // Queue levels: each guest stands in the leftmost free spot at the counter.
+  const used = new Set(g.line.map((c) => c.col));
+  let col = 0;
+  while (used.has(col)) col++;
+  const c = {
+    id: g.nextId++, order: o, look: o.look, patience: p, maxPatience: p, col,
+    phase: 'enter', t: 0, mood: 'wait', result: null, enterTime: sp ? sp.enter : ENTER_TIME,
+  };
+  g.line.push(c);
+  g.customer = g.line[0];
+  g.arriveT = ARRIVE_GAP;
   emit(g, 'sfx', { name: 'bell' });
+  emit(g, 'arrive', { look: o.look, cid: c.id, col });
+  return true;
 }
 
 function endLevel(g) {
   g.phase = 'end';
+  g.customer = null;
   g.coins = Math.max(0, g.coins);
   g.stars = starsFor(g.coins, g.max);
   emit(g, 'end', { stars: g.stars });
   emit(g, 'sfx', { name: g.stars > 0 ? 'win' : 'lose' });
 }
+
+export const waiting = (g) => g.line.filter((c) => c.phase === 'wait');
 
 export function update(g, dt) {
   if (g.phase !== 'play') return;
@@ -71,9 +95,9 @@ export function update(g, dt) {
   // Cooking keeps going whatever station you look at.
   g.grill.forEach((it, i) => {
     if (!it) return;
-    const before = grillState(it);
-    stepGrill(it, dt);
-    const after = grillState(it);
+    const before = grillState(it, g.cook.grill);
+    stepGrill(it, dt, g.cook.grill);
+    const after = grillState(it, g.cook.grill);
     if (before !== after) emit(g, 'sfx', { name: after === 'burnt' ? 'burn' : 'ready', station: 'grill', slot: i });
   });
   const bowl = g.fryer.bowl;
@@ -82,30 +106,50 @@ export function update(g, dt) {
     if (bowl.dipping <= 0) {
       bowl.dipping = 0;
       bowl.battered = true;
-      dropInBasket(g);
+      if (g.autoBasket) dropInBasket(g);
     }
   }
   g.fryer.baskets.forEach((it, i) => {
     if (!it) return;
-    const before = fryState(it);
-    stepFry(it, dt);
-    const after = fryState(it);
+    const before = fryState(it, g.cook.fry);
+    stepFry(it, dt, g.cook.fry);
+    const after = fryState(it, g.cook.fry);
     if (before !== after) emit(g, 'sfx', { name: after === 'burnt' ? 'burn' : 'ready', station: 'fryer', slot: i });
   });
-  const c = g.customer;
-  if (!c) return;
-  c.t += dt;
-  if (c.phase === 'enter' && c.t >= ENTER_TIME) { c.phase = 'wait'; c.t = 0; }
-  else if (c.phase === 'wait') {
-    c.patience = Math.max(0, c.patience - dt);
-    if (c.patience <= 0) {
-      c.phase = 'leave'; c.t = 0; c.mood = 'angry';
-      g.lost += 1;
-      g.results.push({ walked: true, coins: 0 });
-      emit(g, 'walkout');
-      emit(g, 'sfx', { name: 'walkout' });
+  if (g.wok) {
+    const before = wokState(g.wok, g.cook.wok);
+    const warned = g.wok.scorch > 0;
+    stepWok(g.wok, dt, g.cook.wok);
+    const after = wokState(g.wok, g.cook.wok);
+    if (!warned && g.wok.scorch > 0) emit(g, 'scorch');
+    if (before !== after) emit(g, 'sfx', { name: after === 'burnt' ? 'burn' : 'ready', station: 'wok' });
+  }
+  // Guests: walk in, wait (patience runs down), leave.
+  for (const c of g.line) {
+    c.t += dt;
+    if (c.phase === 'enter' && c.t >= c.enterTime) { c.phase = 'wait'; c.t = 0; }
+    else if (c.phase === 'wait') {
+      c.patience = Math.max(0, c.patience - dt);
+      if (c.patience <= 0) {
+        c.phase = 'leave'; c.t = 0; c.mood = 'angry';
+        g.lost += 1;
+        g.results.push({ walked: true, coins: 0 });
+        emit(g, 'walkout', { cid: c.id, look: c.look });
+        emit(g, 'sfx', { name: 'walkout' });
+      }
     }
-  } else if (c.phase === 'leave' && c.t >= LEAVE_TIME) nextCustomer(g);
+  }
+  const before = g.line.length;
+  g.line = g.line.filter((c) => !(c.phase === 'leave' && c.t >= LEAVE_TIME));
+  g.customer = g.line[0] || null;
+  // New guests: one at a time on normal levels; up to queueMax on queue levels
+  // (a spot frees up once the guest who stood there has walked off).
+  g.arriveT -= dt;
+  const present = g.line.filter((c) => c.phase !== 'leave').length;
+  if (g.queueMax <= 1) {
+    if (g.line.length === 0 && before > 0) arrive(g);
+  } else if (g.line.length < g.queueMax && (g.arriveT <= 0 || present === 0)) arrive(g);
+  if (g.line.length === 0 && g.custIdx + 1 >= g.orders.length) endLevel(g);
 }
 
 // ---------- stations ----------
@@ -124,9 +168,10 @@ export function goStation(g, idx) {
   return dir;
 }
 export const currentStation = (g) => g.stations[g.station];
+export const stationOpen = (g, id) => g.stations.some((s) => s.id === id && s.status === 'open');
 
 function trayAdd(g, t) {
-  if (g.tray.length >= TRAY_MAX) {
+  if (g.tray.length >= g.trayMax) {
     emit(g, 'sfx', { name: 'nope' });
     emit(g, 'toast', { text: 'TRAY IS FULL' });
     return false;
@@ -146,11 +191,11 @@ export function grabReady(g, item) {
   return true;
 }
 
-// Grill
-export function grillAdd(g, item) {
+// Grill. `slot` picks the spot (drag controls); without it, the first free one.
+export function grillAdd(g, item, slot = null) {
   if (g.phase !== 'play' || ITEMS[item]?.kind !== 'grill') return false;
-  const i = g.grill.indexOf(null);
-  if (i < 0) { emit(g, 'sfx', { name: 'nope' }); emit(g, 'toast', { text: 'GRILL IS FULL' }); return false; }
+  const i = slot == null ? g.grill.indexOf(null) : (g.grill[slot] === null ? slot : -1);
+  if (i < 0) { emit(g, 'sfx', { name: 'nope' }); emit(g, 'toast', { text: slot == null ? 'GRILL IS FULL' : 'THAT SPOT IS TAKEN' }); return false; }
   g.grill[i] = newGrillItem(item);
   emit(g, 'sfx', { name: 'sizzle' });
   emit(g, 'place', { station: 'grill', slot: i });
@@ -173,11 +218,20 @@ function toss(g, station, slot) {
   emit(g, 'waste', { station, slot });
   return true;
 }
+// Drag controls: food dragged from a station to the bin (costs the ingredient).
+export function discard(g, station, slot = 0) {
+  if (station === 'grill' && g.grill[slot]) g.grill[slot] = null;
+  else if (station === 'fryer' && g.fryer.baskets[slot]) g.fryer.baskets[slot] = null;
+  else if (station === 'wok' && g.wok) g.wok = null;
+  else return false;
+  return toss(g, station, slot);
+}
 export function grillTake(g, slot) {
   const it = g.grill[slot];
   if (!it) return false;
-  if (grillState(it) === 'burnt') { g.grill[slot] = null; return toss(g, 'grill', slot); }
-  const t = trayItem(it.item, grillState(it), grillPerfect(it));
+  const st = grillState(it, g.cook.grill);
+  if (st === 'burnt') { g.grill[slot] = null; return toss(g, 'grill', slot); }
+  const t = trayItem(it.item, st, grillPerfect(it, g.cook.grill));
   if (!trayAdd(g, t)) return false;
   g.grill[slot] = null;
   emit(g, 'sfx', { name: t.cook === 'done' ? 'grab' : 'nope' });
@@ -186,10 +240,10 @@ export function grillTake(g, slot) {
   return true;
 }
 
-// Fryer: chicken bin -> batter bowl (tap to dip) -> basket -> lift onto the tray.
+// Fryer: chicken bin -> batter bowl (dip) -> basket -> lift onto the tray.
 export function fryAdd(g) {
   if (g.phase !== 'play') return false;
-  if (g.fryer.bowl) { emit(g, 'sfx', { name: 'nope' }); return false; }
+  if (g.fryer.bowl) { emit(g, 'sfx', { name: 'nope' }); emit(g, 'toast', { text: 'THE BOWL IS BUSY' }); return false; }
   g.fryer.bowl = { battered: false, dipping: 0 };
   emit(g, 'sfx', { name: 'grab' });
   return true;
@@ -204,20 +258,32 @@ export function fryDip(g) {
   }
   return dropInBasket(g);
 }
-function dropInBasket(g) {
-  const i = g.fryer.baskets.indexOf(null);
-  if (i < 0) { emit(g, 'toast', { text: 'BASKETS FULL' }); return false; }
+// Drag controls: raw chicken dropped on the bowl goes in and is dipped at once.
+export function fryBatter(g) {
+  if (g.fryer.bowl && !g.fryer.bowl.battered && g.fryer.bowl.dipping <= 0) return fryDip(g);
+  return fryAdd(g) && fryDip(g);
+}
+function dropInBasket(g, slot = null) {
+  const i = slot == null ? g.fryer.baskets.indexOf(null) : (g.fryer.baskets[slot] === null ? slot : -1);
+  if (i < 0) { emit(g, 'sfx', { name: 'nope' }); emit(g, 'toast', { text: 'BASKETS FULL' }); return false; }
   g.fryer.bowl = null;
   g.fryer.baskets[i] = newFryItem();
   emit(g, 'sfx', { name: 'fry' });
   emit(g, 'place', { station: 'fryer', slot: i });
   return true;
 }
+// Drag controls: battered chicken from the bowl into a basket.
+export function fryToBasket(g, slot = null) {
+  const b = g.fryer.bowl;
+  if (!b || !b.battered) { emit(g, 'sfx', { name: 'nope' }); emit(g, 'toast', { text: 'BATTER IT FIRST' }); return false; }
+  return dropInBasket(g, slot);
+}
 export function fryLift(g, slot) {
   const it = g.fryer.baskets[slot];
   if (!it) return false;
-  if (fryState(it) === 'burnt') { g.fryer.baskets[slot] = null; return toss(g, 'fryer', slot); }
-  const t = trayItem('chicken', fryState(it), isPerfect(it.p, COOK.fry));
+  const st = fryState(it, g.cook.fry);
+  if (st === 'burnt') { g.fryer.baskets[slot] = null; return toss(g, 'fryer', slot); }
+  const t = trayItem('chicken', st, isPerfect(it.p, g.cook.fry));
   if (!trayAdd(g, t)) return false;
   g.fryer.baskets[slot] = null;
   emit(g, 'sfx', { name: t.cook === 'done' ? 'grab' : 'nope' });
@@ -226,8 +292,44 @@ export function fryLift(g, slot) {
   return true;
 }
 
-// Sauces: tap a bottle. With exactly one item it fits, it goes on at once;
-// otherwise the bottle is held until you tap an item on the tray.
+// Wok: start a dish, toss it (flick up), take it to the tray.
+export function wokStart(g, item) {
+  if (g.phase !== 'play' || ITEMS[item]?.kind !== 'wok' || !stationOpen(g, 'wok')) return false;
+  if (g.wok) { emit(g, 'sfx', { name: 'nope' }); emit(g, 'toast', { text: 'THE WOK IS BUSY' }); return false; }
+  g.wok = newWokItem(item);
+  emit(g, 'sfx', { name: 'sizzle' });
+  emit(g, 'place', { station: 'wok', slot: 0 });
+  return true;
+}
+export function wokToss(g) {
+  if (g.phase !== 'play' || !g.wok) return null;
+  const r = tossWok(g.wok, g.cook.wok);
+  if (r === 'burnt') { emit(g, 'sfx', { name: 'nope' }); emit(g, 'toast', { text: 'BURNT! THROW IT OUT' }); return r; }
+  g.wok.tossT = g.time;
+  emit(g, 'toss', { spill: r === 'spill' });
+  if (r === 'spill') {
+    g.coins -= WASTE_COST;
+    emit(g, 'sfx', { name: 'trash' });
+    emit(g, 'toast', { text: `TOO FAST! SPILLED -${WASTE_COST}` });
+  } else emit(g, 'sfx', { name: 'toss' });
+  return r;
+}
+export function wokTake(g) {
+  const w = g.wok;
+  if (!w) return false;
+  const st = wokState(w, g.cook.wok);
+  if (st === 'burnt') { g.wok = null; return toss(g, 'wok', 0); }
+  const t = trayItem(w.item, st, wokPerfect(w, g.cook.wok));
+  if (!trayAdd(g, t)) return false;
+  g.wok = null;
+  emit(g, 'sfx', { name: t.cook === 'done' ? 'grab' : 'nope' });
+  if (t.cook === 'raw') emit(g, 'toast', { text: 'NOT COOKED YET!' });
+  if (t.perfect) emit(g, 'toast', { text: 'PERFECT TOSS!', good: true });
+  return true;
+}
+
+// Sauces (tap controls): tap a bottle. With exactly one item it fits, it goes
+// on at once; otherwise the bottle is held until you tap an item on the tray.
 export function pickSauce(g, sauce) {
   if (g.phase !== 'play' || !SAUCES[sauce]) return false;
   if (g.held === sauce) { g.held = null; return true; }
@@ -246,15 +348,19 @@ export function pickSauce(g, sauce) {
 // Food still cooking comes first: that is the item the player is thinking of.
 export function sauceHint(g, sauce) {
   const st = SAUCES[sauce].station;
-  const cooking = st === 'grill' ? g.grill.some(Boolean) : (g.fryer.baskets.some(Boolean) || !!g.fryer.bowl);
+  const cooking = st === 'grill' ? g.grill.some(Boolean) : st === 'wok' ? !!g.wok : (g.fryer.baskets.some(Boolean) || !!g.fryer.bowl);
   if (cooking) return 'TAKE IT TO THE TRAY FIRST';
-  if (g.tray.some((t) => ITEMS[t.item].station === st && t.sauce)) return 'ALREADY SAUCED';
-  return st === 'grill' ? 'GRILL SOMETHING FIRST' : 'FRY CHICKEN FIRST';
+  if (g.tray.some((t) => ITEMS[t.item].station === st && t.sauce)) return st === 'wok' ? 'ALREADY TOPPED' : 'ALREADY SAUCED';
+  return st === 'grill' ? 'GRILL SOMETHING FIRST' : st === 'wok' ? 'COOK A WOK DISH FIRST' : 'FRY CHICKEN FIRST';
 }
 export function applySauce(g, index, sauce = g.held) {
   const t = g.tray[index];
   if (!t || !sauce) return false;
-  if (!canSauce(t, sauce)) { emit(g, 'sfx', { name: 'nope' }); return false; }
+  if (!canSauce(t, sauce)) {
+    emit(g, 'sfx', { name: 'nope' });
+    emit(g, 'toast', { text: t.sauce && ITEMS[t.item].station === SAUCES[sauce].station ? (SAUCES[sauce].topping ? 'ALREADY TOPPED' : 'ALREADY SAUCED') : 'IT DOES NOT GO ON THAT' });
+    return false;
+  }
   t.sauce = sauce;
   g.held = null;
   emit(g, 'sfx', { name: 'sauce' });
@@ -272,19 +378,34 @@ export function trashTray(g, index) {
   return true;
 }
 
-// Hand the tray to the customer.
-export function serve(g) {
-  const c = g.customer;
+// Hand the tray to a guest: `idx` in g.line (default: the first waiting guest).
+export function serve(g, idx = null) {
+  const c = idx == null ? waiting(g)[0] || g.customer : g.line[idx];
   if (g.phase !== 'play' || !c || c.phase !== 'wait') return null;
   if (g.tray.length === 0) { emit(g, 'sfx', { name: 'nope' }); emit(g, 'toast', { text: 'TRAY IS EMPTY' }); return null; }
   const res = scoreServe(c.order, g.tray, c.patience / c.maxPatience);
+  // Spirits you get on with tip a little more; the moss golem adds old coins.
+  if (res.mood === 'happy' && typeof c.look === 'string' && SPIRITS[c.look]) {
+    const tip = Math.max(0, res.tip + (g.relTips[c.look] || 0));
+    const old = SPIRITS[c.look].oldCoins || 0;
+    res.coins += tip - res.tip + old;
+    res.tip = tip;
+    res.oldCoins = old;
+  }
   g.tray = [];
   g.held = null;
   g.coins += res.coins;
   g.served += 1;
   g.results.push(res);
   c.phase = 'leave'; c.t = 0; c.mood = res.mood; c.result = res;
-  emit(g, 'served', { result: res });
+  emit(g, 'served', { result: res, look: c.look, cid: c.id, idx: g.line.indexOf(c) });
   emit(g, 'sfx', { name: res.mood === 'happy' ? 'serve' : 'meh' });
   return res;
+}
+// Tap controls' SERVE button: the first guest whose order the tray matches
+// exactly, otherwise the first waiting guest.
+export function serveAuto(g) {
+  const w = waiting(g);
+  const c = w.find((x) => scoreServe(x.order, g.tray, 1).mood === 'happy') || w[0];
+  return c ? serve(g, g.line.indexOf(c)) : serve(g);
 }

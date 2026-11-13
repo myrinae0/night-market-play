@@ -9,5 +9,6 @@ Only the sprites this game uses are kept here, unmodified (16 x 16 PNG):
   canned_food_4 (soda), sushi_roll (kimbap), sandwich (egg toast),
   steak_raw / steak_grilled (galbi), sausage, chicken_drumstick_raw (raw chicken),
   chicken_nuggets (fried chicken), honey_pot (honey), chili_pepper_green (chili),
-  chili_pepper_red (yangnyeom), garlic (soy garlic).
-Cooking stages (raw, battered, burnt) are recoloured copies made at run time.
+  chili_pepper_red (yangnyeom), garlic (soy garlic), egg_fried (fried egg
+  topping), scallions (scallion topping), rice_ball (raw rice for fried rice).
+Cooking stages (raw, battered, pale, burnt) are recoloured copies made at run time.

@@ -1,7 +1,27 @@
 // Code-drawn pixel art: menu items, sauce bottles, customers, the Shiba, icons.
 import { C, R, box, rbox, mix, makeCanvas, getCtx, setCtx } from './gfx.js';
-import { img, tinted, PEOPLE } from './assets.js';
-import { COOK } from './data.js';
+import { img, tinted, PEOPLE, registerImage } from './assets.js';
+import { COOK, ITEMS } from './data.js';
+import { SPIRIT_ART, FOOD_ART, mapRows } from './art.js';
+
+// A canvas from a pixel map (rows of palette letters; '.' is clear).
+export function pixelCanvas(rows, pal, w = 16, h = rows.length) {
+  const cv = makeCanvas(w, h);
+  const cx = cv.getContext('2d');
+  rows.forEach((row, j) => {
+    for (let i = 0; i < row.length; i++) {
+      const c = pal[row[i]];
+      if (!c) continue;
+      cx.fillStyle = c;
+      cx.fillRect(i, j, 1, 1);
+    }
+  });
+  return cv;
+}
+// The code-drawn wok dishes join the image table (so they can be recoloured).
+export function registerFoodArt() {
+  for (const [k, a] of Object.entries(FOOD_ART)) registerImage(k, pixelCanvas(mapRows(a.rows), a.pal));
+}
 
 // ---------- menu items ----------
 // Food art is the CC0 "16x16 Food" pack (src/assets.js); drinks the pack has no
@@ -53,6 +73,14 @@ export function itemImage(id, opts = {}) {
     if (opts.raw) return img('chicken_raw');
     const t = cookTint(p, COOK.fry, 'batter');
     return t.mode ? tinted('chicken', t.mode, t.a) : img('chicken');
+  }
+  if (ITEMS[id]?.kind === 'wok') {
+    // Raw ingredients at first, then the dish, pale until it is done; scorch darkens it.
+    const scorch = opts.cook === 'burnt' ? 1 : opts.scorch || 0;
+    if (scorch > 0.05) return tinted(id, 'burnt', Math.min(0.85, 0.15 + scorch * 0.7));
+    if (opts.raw || p < 0.3) return img(ITEMS[id].raw);
+    if (p < COOK.wok.perfectLo) return tinted(id, 'pale', (1 - p / COOK.wok.perfectLo) * 0.9);
+    return img(id);
   }
   return img(id);
 }
@@ -130,20 +158,67 @@ export function heartIcon(x, y, col = C.red) {
 
 // ---------- customers ----------
 // People are Kenney's RPG Urban Pack characters (front-facing frame) at 4x.
+// Spirits are drawn for this game (src/art.js) at the same scale.
 export let CUSTOMER_SCALE = 4;
 export function setCustomerScale(n) { CUSTOMER_SCALE = n; }
-export function drawCustomer(look, cx, y, { mood = 'wait', t = 0, low = false } = {}) {
-  if (look === 'shiba') return drawShiba(cx, y + 2, { big: true, mood, t, scale: CUSTOMER_SCALE - 1 });
-  const s = CUSTOMER_SCALE;
-  const p = PEOPLE[look % PEOPLE.length];
+const spiritCache = new Map();
+function spiritCanvas(id, frame = 0) {
+  const key = `${id}|${frame}`;
+  let cv = spiritCache.get(key);
+  if (cv) return cv;
+  const a = SPIRIT_ART[id];
+  cv = pixelCanvas(mapRows(a.frames[frame % a.frames.length]), a.pal);
+  spiritCache.set(key, cv);
+  return cv;
+}
+const maskCache = new Map();
+function maskCanvas(id) {
+  let cv = maskCache.get(id);
+  if (!cv) { const m = SPIRIT_ART[id].mask; cv = pixelCanvas(m.rows, m.pal, m.rows[0].length); maskCache.set(id, cv); }
+  return cv;
+}
+// opts: mood, t (time), low (patience is low), scale, slip (0..1, the fox's mask)
+export function drawCustomer(look, cx, y, { mood = 'wait', t = 0, low = false, scale = CUSTOMER_SCALE } = {}) {
+  if (look === 'shiba') return drawShiba(cx, y + 2, { big: true, mood, t, scale: Math.max(2, scale - 1) });
+  const s = scale;
   const hop = mood === 'happy' ? Math.abs(Math.round(Math.sin(t * 10) * 2)) * s / 2 : 0;
-  const x = Math.round(cx - 8 * s), top = Math.round(y - 15 * s - hop);
-  const im = img('urban');
-  if (im) getCtx().drawImage(im, p.sx, p.sy, 16, 16, x, top, 16 * s, 16 * s);
-  // mood marks, drawn on the same 4 px grid as the sprite
+  const ctx = getCtx();
+  let x = Math.round(cx - 8 * s), top = Math.round(y - 15 * s - hop);
+  if (typeof look === 'string' && SPIRIT_ART[look]) {
+    const a = SPIRIT_ART[look];
+    if (look === 'lantern' || look === 'moth' || look === 'crane' || look === 'wisp') top -= Math.round((Math.sin(t * 2.2 + cx) * 0.5 + 0.5) * 2) * s / 2 + s; // floating
+    if (look === 'lantern') { // warm glow behind the paper
+      const k = Math.sin(t * 3) * 0.5 + 0.5;
+      R(x + 2 * s, top + 3 * s, 12 * s, 9 * s, mix('#3a2a40', '#7a5a40', k * 0.6));
+    }
+    ctx.drawImage(spiritCanvas(look), x, top, 16 * s, 16 * s);
+    if (a.mask) { // the fox's mask slips while they wait, more as patience runs low
+      const slip = mood === 'wait' && (low || Math.sin(t * 0.9) > 0.75) ? 1 : 0;
+      ctx.drawImage(maskCanvas(look), x + (a.mask.x + slip * 3) * s, top + (a.mask.y + slip) * s, a.mask.rows[0].length * s, a.mask.rows.length * s);
+    }
+    if (look === 'frog') { // a raindrop rolls down its back now and then
+      const k = (t * 0.7) % 1;
+      if (k < 0.6) R(x + 13 * s, top + (9 + Math.floor(k * 8)) * s, s, s, '#2ce8f5');
+    }
+  } else {
+    const p = PEOPLE[(Number(look) || 0) % PEOPLE.length];
+    const im = img('urban');
+    if (im) ctx.drawImage(im, p.sx, p.sy, 16, 16, x, top, 16 * s, 16 * s);
+  }
+  // mood marks, drawn on the same grid as the sprite
   const P = (px, py, c) => R(x + px * s, top + py * s, s, s, c);
   if (mood === 'angry') { P(13, 0, C.red); P(14, 1, C.red); P(15, 0, C.red); P(13, 2, C.red); P(15, 2, C.red); }
   else if (low && mood !== 'happy') { P(14, 1, C.teal); P(14, 2, C.teal); P(13, 2, C.teal); P(15, 2, C.teal); P(14, 3, C.teal); }
+}
+// A spirit's or person's face for the dialogue box portrait.
+export function drawPortrait(look, x, y, s = 2, t = 0) {
+  const ctx = getCtx();
+  if (typeof look === 'string' && SPIRIT_ART[look]) {
+    ctx.drawImage(spiritCanvas(look), x, y, 16 * s, 16 * s);
+    const a = SPIRIT_ART[look];
+    if (a.mask) { const slip = Math.sin(t * 0.9) > 0.6 ? 1 : 0; ctx.drawImage(maskCanvas(look), x + (a.mask.x + slip * 3) * s, y + (a.mask.y + slip) * s, a.mask.rows[0].length * s, a.mask.rows.length * s); }
+  } else if (look === 'shiba') ctx.drawImage(shibaCanvas(false), x, y, 16 * s, 16 * s);
+  else { const p = PEOPLE[(Number(look) || 0) % PEOPLE.length]; const im = img('urban'); if (im) ctx.drawImage(im, p.sx, p.sy, 16, 16, x, y, 16 * s, 16 * s); }
 }
 
 // Chimaek the Shiba: a 16 x 16 sprite drawn for this game in the same style as
@@ -187,11 +262,25 @@ function shibaCanvas(happy) {
   shibaCache.set(key, cv);
   return cv;
 }
-export function drawShiba(cx, y, { big = false, mood = 'wait', t = 0, scale = 2 } = {}) {
+// react: 'wag' (fast wag, happy face), 'growl' (brows, GRR, a little shake),
+// 'hide' (ducks behind the counter: only ears and eyes show), 'stare'.
+export function drawShiba(cx, y, { big = false, mood = 'wait', t = 0, scale = 2, react = null } = {}) {
   const s = big ? Math.max(scale, 2) : scale;
   const hop = mood === 'happy' ? Math.abs(Math.round(Math.sin(t * 10) * 2)) * s / 2 : 0;
-  const x = Math.round(cx - 8 * s), top = Math.round(y - 16 * s - hop);
-  getCtx().drawImage(shibaCanvas(mood === 'happy'), x, top, 16 * s, 16 * s);
-  // tail wag: one pixel
-  if (Math.sin(t * 6) > 0) R(x + 15 * s, top + 11 * s, s, s, SHIBA_PAL.o);
+  let x = Math.round(cx - 8 * s);
+  const top = Math.round(y - 16 * s - hop);
+  const ctx = getCtx();
+  if (react === 'hide') { // peeking over the edge: the top 6 rows, sunk down
+    const peek = 6 - (Math.sin(t * 1.5) > 0.6 ? 1 : 0);
+    ctx.drawImage(shibaCanvas(false), 0, 0, 16, peek, x, Math.round(y - peek * s), 16 * s, peek * s);
+    return;
+  }
+  if (react === 'growl') x += Math.round(Math.sin(t * 40)) > 0 ? 1 : 0;
+  ctx.drawImage(shibaCanvas(mood === 'happy' || react === 'wag'), x, top, 16 * s, 16 * s);
+  if (react === 'growl') { // angry brows and a small GRR
+    R(x + 3 * s, top + 4 * s, 2 * s, s, SHIBA_PAL.k); R(x + 11 * s, top + 4 * s, 2 * s, s, SHIBA_PAL.k);
+    if (Math.floor(t * 2) % 2) R(x + 6 * s, top + 8 * s, 4 * s, s, SHIBA_PAL.w);
+  }
+  // tail wag: one pixel (fast when wagging)
+  if (Math.sin(t * (react === 'wag' ? 18 : 6)) > 0) R(x + 15 * s, top + 11 * s, s, s, SHIBA_PAL.o);
 }

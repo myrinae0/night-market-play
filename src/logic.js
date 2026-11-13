@@ -1,5 +1,6 @@
 // Pure game rules: seeded orders, cooking state machine, scoring, stars, unlocks.
-import { ITEMS, SAUCES, COOK, LEVELS, STAR_SHARES, LOOKS } from './data.js';
+import { ITEMS, SAUCES, COOK, LEVELS, STAR_SHARES, LOOKS, PERSON_SHARE, WOK_ITEMS, STATION_SAUCES, UPGRADES, GRILL_SLOTS, TRAY_MAX } from './data.js';
+import { SPIRITS, spiritsFor } from './spirits.js';
 
 // ---------- seeded random ----------
 export function rng(seed) {
@@ -27,6 +28,17 @@ export function menuFor(levelN) {
 function line(item, sauce = null) {
   return { item, sauce };
 }
+// One cooked line from a station kind, with that station's sauce half the time.
+function cookedLine(r, kind) {
+  if (kind === 'grill') return line(pick(r, ['galbi', 'sausage']), r() < 0.5 ? pick(r, STATION_SAUCES.grill) : null);
+  if (kind === 'fry') return line('chicken', r() < 0.6 ? pick(r, STATION_SAUCES.fryer) : null);
+  return line(pick(r, WOK_ITEMS), r() < 0.45 ? pick(r, STATION_SAUCES.wok) : null);
+}
+function shuffle(r, arr) {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(r() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
+  return a;
+}
 
 // Generates one order. `i` is the customer's index in the level; the first
 // order of a level showcases its new station in its simplest form.
@@ -49,7 +61,7 @@ export function makeOrder(levelN, i, r) {
       if (i >= 4 && r() < 0.3) lines.push(line(pick(r, ['galbi', 'sausage']), r() < 0.5 ? 'spicy' : null));
       if (r() < 0.6) lines.push(line(pick(r, drinks)));
     }
-  } else {
+  } else if (levelN === 3) {
     if (i === 0) {
       lines.push(line('chicken'), line('beer'));
     } else if (i === LEVELS[2].customers - 1) {
@@ -63,19 +75,54 @@ export function makeOrder(levelN, i, r) {
       lines.push(line(pick(r, ['galbi', 'sausage']), r() < 0.5 ? pick(r, ['spicy', 'honey']) : null));
       lines.push(line(pick(r, [...drinks, ...foods])));
     }
+  } else if (levelN === 4) {
+    // The wok: mostly a wok dish and a drink; later, something from another station.
+    if (i === 0) lines.push(line('friedrice'));
+    else {
+      lines.push(line(pick(r, WOK_ITEMS), i >= 2 && r() < 0.45 ? pick(r, STATION_SAUCES.wok) : null));
+      if (r() < 0.6) lines.push(line(pick(r, drinks)));
+      if (i >= 4 && r() < 0.35) lines.push(cookedLine(r, pick(r, ['grill', 'fry'])));
+    }
+  } else if (levelN === 5) {
+    // Mix: two different stations in most orders, sometimes a drink on top.
+    const kinds = shuffle(r, ['grill', 'fry', 'wok', 'ready']);
+    const n = i === 0 ? 2 : r() < 0.25 ? 1 : 2;
+    for (let k = 0; k < n; k++) lines.push(kinds[k] === 'ready' ? line(pick(r, [...drinks, ...foods])) : cookedLine(r, kinds[k]));
+    if (n === 2 && !lines.some((l) => ITEMS[l.item].drink) && r() < 0.35) lines.push(line(pick(r, drinks)));
+  } else {
+    // Queue (level 6) and later: smaller orders, since several wait at once.
+    lines.push(cookedLine(r, pick(r, ['grill', 'fry', 'wok'])));
+    if (r() < 0.55) lines.push(line(pick(r, r() < 0.7 ? drinks : foods)));
   }
   return { lines, patience: patienceFor(lines, levelN) };
 }
 
 // Seconds of patience: a base plus time for each thing that has to be cooked.
-export function patienceFor(lines, levelN) {
+export function patienceFor(lines, levelN, look = null) {
+  const def = levelDef(levelN);
   let p = levelN === 1 ? 22 : 26;
   for (const l of lines) {
     const k = ITEMS[l.item].kind;
-    p += k === 'grill' ? 16 : k === 'fry' ? 16 : 4;
+    p += k === 'ready' ? 4 : 16;
     if (l.sauce) p += 3;
   }
-  return p;
+  // A line of guests: everyone waits at once, so each waits longer.
+  if (def && def.queue > 1) p *= 1.9;
+  if (typeof look === 'string' && SPIRITS[look]) p *= SPIRITS[look].patience;
+  return Math.round(p);
+}
+
+// Who comes to the counter: the level's new spirit first, Chimaek last on level
+// 3, now and then a normal person, otherwise one of the spirits of the night.
+export function featuredSpirit(levelN) {
+  return Object.keys(SPIRITS).find((id) => SPIRITS[id].from === levelN) || null;
+}
+function pickLook(levelN, i, r, def) {
+  if (levelN === 3 && i === def.customers - 1) return 'shiba';
+  const featured = featuredSpirit(levelN);
+  if (i === 0 && featured) return featured;
+  if (r() < PERSON_SHARE) return Math.floor(r() * LOOKS);
+  return pick(r, spiritsFor(levelN, !!def.rain));
 }
 
 export function makeOrders(levelN, seed) {
@@ -84,7 +131,8 @@ export function makeOrders(levelN, seed) {
   const orders = [];
   for (let i = 0; i < def.customers; i++) {
     const o = makeOrder(levelN, i, r);
-    o.look = levelN === 3 && i === def.customers - 1 ? 'shiba' : Math.floor(r() * LOOKS);
+    o.look = pickLook(levelN, i, r, def);
+    o.patience = patienceFor(o.lines, levelN, o.look);
     orders.push(o);
   }
   return orders;
@@ -131,6 +179,38 @@ export function stepFry(f, dt, spec = COOK.fry) {
   return f;
 }
 export const fryState = (f, spec = COOK.fry) => cookState(f.p, spec);
+
+// Wok: tossing cooks. Each toss adds spec.perToss. Tossing again before the
+// food has landed (spec.air seconds) spills some: progress drops and the dish
+// can't be perfect. With no toss for spec.idleSafe seconds it starts to
+// scorch, and it is burnt spec.scorchTime later. A toss clears the scorch.
+export function newWokItem(item) {
+  return { item, p: 0, scorch: 0, idle: 0, air: 9, spills: 0, tosses: 0 };
+}
+export function stepWok(w, dt, spec = COOK.wok) {
+  w.idle += dt;
+  w.air += dt;
+  if (w.idle > spec.idleSafe) w.scorch = Math.min(1, w.scorch + dt / spec.scorchTime);
+  return w;
+}
+export function tossWok(w, spec = COOK.wok) {
+  if (wokState(w) === 'burnt') return 'burnt';
+  const spill = w.air < spec.air;
+  w.air = 0; w.idle = 0; w.scorch = 0;
+  if (spill) {
+    w.spills += 1;
+    w.p = Math.max(0, w.p - spec.spillLoss);
+    return 'spill';
+  }
+  w.tosses += 1;
+  w.p = Math.min(spec.max, w.p + spec.perToss);
+  return 'toss';
+}
+export function wokState(w, spec = COOK.wok) {
+  if (w.scorch >= 1) return 'burnt';
+  return w.p >= spec.done ? 'done' : 'raw';
+}
+export const wokPerfect = (w, spec = COOK.wok) => wokState(w, spec) === 'done' && isPerfect(w.p, spec) && w.spills === 0;
 
 // What lands on the tray.
 export function trayItem(item, cook = null, perfect = false) {
@@ -225,3 +305,35 @@ export function stationStatus(levelN, station, stationsDef) {
   if (stationsDef[station].comingSoon) return 'soon';
   return 'locked';
 }
+
+// ---------- stall upgrades and the coin purse ----------
+// What the bought upgrades change. `owned` is { id: true }.
+export function upgradeEffects(owned = {}) {
+  const o = owned || {};
+  return {
+    grillSlots: GRILL_SLOTS + (o.grill4 ? 1 : 0),
+    trayMax: TRAY_MAX + (o.tray5 ? 1 : 0),
+    fryTime: COOK.fry.time * (o.fastfry ? 0.8 : 1),
+    patienceMul: o.patience ? 1.2 : 1,
+    perToss: COOK.wok.perToss * (o.wokfast ? 4 / 3 : 1),
+  };
+}
+// Cooking specs for a game with these upgrades (copies; COOK is never changed).
+export function cookSpecs(owned) {
+  const e = upgradeEffects(owned);
+  return { grill: { ...COOK.grill }, fry: { ...COOK.fry, time: e.fryTime }, wok: { ...COOK.wok, perToss: e.perToss } };
+}
+export const upgradeById = (id) => UPGRADES.find((u) => u.id === id) || null;
+export function canBuy(purse, id) {
+  const u = upgradeById(id);
+  return !!u && !purse.upgrades[id] && purse.wallet >= u.cost;
+}
+// purse: { wallet, upgrades }. Returns true if bought.
+export function buyUpgrade(purse, id) {
+  if (!canBuy(purse, id)) return false;
+  purse.wallet -= upgradeById(id).cost;
+  purse.upgrades[id] = true;
+  return true;
+}
+// A night's coins go into the purse (a bad night never takes coins away).
+export const nightPay = (coins) => Math.max(0, Math.round(coins));

@@ -8,6 +8,7 @@ export const FOOD_FILES = {
   galbi_raw: 'steak_raw', galbi: 'steak_grilled', sausage: 'sausage',
   chicken_raw: 'chicken_drumstick_raw', chicken: 'chicken_nuggets',
   honey: 'honey_pot', spicy: 'chili_pepper_green', yangnyeom: 'chili_pepper_red', soygarlic: 'garlic',
+  egg: 'egg_fried', scallion: 'scallions', rice_raw: 'rice_ball',
 };
 // assets/kenney-rpg-urban: Kenney's RPG Urban Pack (CC0), 16 x 16 tiles, no spacing.
 export const URBAN = { file: 'assets/kenney-rpg-urban/tilemap_packed.png', cols: 27, tile: 16 };
@@ -16,6 +17,8 @@ export const PEOPLE = [0, 3, 6, 9, 12, 15].map((row) => ({ sx: 24 * 16, sy: row 
 
 const images = {};
 export const img = (name) => images[name];
+// Code-drawn sprites (src/art.js) join the same table, so they can be recoloured too.
+export function registerImage(name, canvas) { images[name] = canvas; }
 
 function load(name, src) {
   return new Promise((resolve, reject) => {
@@ -31,7 +34,7 @@ export function loadAssets() {
   return Promise.all(jobs);
 }
 
-const TINTS = { raw: '#f2a49a', batter: '#f6e2b0', burnt: '#2a1712' };
+const TINTS = { raw: '#f2a49a', batter: '#f6e2b0', pale: '#f4ecd8', burnt: '#2a1712' };
 const tintCache = new Map();
 // A copy of sprite `name` with every pixel moved `amount` (0..1, in 0.1 steps)
 // toward the tint colour. Alpha is kept, so outlines and shapes don't change.

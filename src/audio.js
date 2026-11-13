@@ -1,17 +1,27 @@
 // Tiny WebAudio synth: every sound is made in code, no audio files.
 import { createPlayer } from './music.js';
+import { createAmbience } from './ambience.js';
 
-let ac = null, master = null, sfxBus = null, noiseBuf = null, music = null;
-// Volumes are 0..1 from the settings sliders; mute silences everything.
-let muted = false, musicVol = 0.7, sfxVol = 1;
+let ac = null, master = null, sfxBus = null, noiseBuf = null, music = null, amb = null;
+// Volumes are 0..1 from the settings sliders (music, ambience, sound effects);
+// mute silences everything.
+let muted = false, musicVol = 0.7, ambVol = 0.6, sfxVol = 1, rain = false;
 const last = new Map();
 
-// The music loop runs only while it is wanted, audible and the page is visible.
+// The music loop and the ambience run only while wanted, audible and the page
+// is visible.
 function refreshMusic() {
-  if (!music) return;
-  const want = musicVol > 0 && !muted && !document.hidden;
-  if (want && !music.running) music.start();
-  else if (!want && music.running) music.stop();
+  const on = !muted && !document.hidden;
+  if (music) {
+    const want = musicVol > 0 && on;
+    if (want && !music.running) music.start();
+    else if (!want && music.running) music.stop();
+  }
+  if (amb) {
+    const want = ambVol > 0 && on;
+    if (want && !amb.running) { amb.start(); amb.setRain(rain); }
+    else if (!want && amb.running) amb.stop();
+  }
 }
 
 export function setMuted(m) {
@@ -26,11 +36,21 @@ export function setMusicVolume(v) {
   if (music) music.setVolume(musicVol);
   refreshMusic();
 }
+export function setAmbienceVolume(v) {
+  ambVol = clamp01(v);
+  if (amb) amb.setVolume(ambVol);
+  refreshMusic();
+}
 export function setSfxVolume(v) {
   sfxVol = clamp01(v);
   if (sfxBus) sfxBus.gain.value = sfxVol;
 }
-export const volumes = () => ({ music: musicVol, sfx: sfxVol });
+export const volumes = () => ({ music: musicVol, amb: ambVol, sfx: sfxVol });
+// Rain on the awning (rainy nights).
+export function setRain(on) {
+  rain = !!on;
+  if (amb) amb.setRain(rain);
+}
 // A short cheerful flourish at the end of a good level.
 export function sting() {
   if (ac && music && musicVol > 0 && !muted) { try { music.sting(); } catch { /* best effort */ } }
@@ -53,6 +73,7 @@ export function unlock() {
     const d = noiseBuf.getChannelData(0);
     for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
     music = createPlayer(ac, master, { volume: musicVol });
+    amb = createAmbience(ac, master, { volume: ambVol });
     // Pause everything while the tab is hidden; pick up where it was on return.
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) ac.suspend(); else ac.resume();
@@ -110,6 +131,11 @@ const SOUNDS = {
   walkout: () => { tone(330, 0.15, { vol: 0.07 }); tone(262, 0.15, { vol: 0.07, at: 0.15 }); tone(196, 0.3, { vol: 0.07, at: 0.3 }); },
   bell: () => { tone(1568, 0.25, { type: 'sine', vol: 0.06 }); tone(2093, 0.35, { type: 'sine', vol: 0.05, at: 0.1 }); },
   swipe: () => noise(0.12, { type: 'bandpass', f: 600, to: 2400, q: 2, vol: 0.1 }),
+  // The wok: a whoosh up and a clatter as it lands.
+  toss: () => { noise(0.16, { type: 'bandpass', f: 500, to: 2600, q: 1.5, vol: 0.14 }); noise(0.2, { type: 'highpass', f: 3500, vol: 0.08, at: 0.22 }); tone(160, 0.06, { type: 'triangle', vol: 0.06, at: 0.22 }); },
+  lift: () => tone(660, 0.05, { type: 'triangle', vol: 0.05, to: 900 }),
+  drop: () => tone(500, 0.06, { type: 'triangle', vol: 0.06, to: 300 }),
+  page: () => tone(1200, 0.03, { type: 'sine', vol: 0.03 }),
   coin: () => { tone(1976, 0.04, { vol: 0.04 }); tone(2637, 0.08, { vol: 0.04, at: 0.04 }); },
   win: () => { [523, 659, 784, 1047, 784, 1047].forEach((f, i) => tone(f, i === 5 ? 0.35 : 0.1, { type: 'square', vol: 0.07, at: i * 0.11 })); },
   lose: () => { [392, 370, 349, 330].forEach((f, i) => tone(f, 0.2, { type: 'triangle', vol: 0.08, at: i * 0.18 })); },
@@ -117,7 +143,7 @@ const SOUNDS = {
 };
 
 // Frequent ambient cooking sounds don't duck the music (it would pump).
-const QUIET = new Set(['crackle', 'bubble', 'tap', 'coin']);
+const QUIET = new Set(['crackle', 'bubble', 'tap', 'coin', 'lift', 'page']);
 
 // Plays a named sound, at most once per `gap` seconds per name.
 export function play(name, gap = 0.03) {
