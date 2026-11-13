@@ -3,7 +3,7 @@
 // (debug). drawFrame() draws whichever screen is up and returns the registry
 // of hits, drag sources and drop targets for main.js.
 import { W, H, C, R, rbox, text, tw, mix, getCtx } from './gfx.js';
-import { LEVELS, STATIONS, UPGRADES, SHOP_FROM_LEVEL } from './data.js';
+import { LEVELS, STATIONS, UPGRADES, SHOP_FROM_LEVEL, RESET_TEXT } from './data.js';
 import { isUnlocked, levelDef, canBuy } from './logic.js';
 import { drawItem, drawCustomer, drawShiba, drawPortrait, starIcon, lockIcon, coinIcon } from './sprites.js';
 import { SPIRITS, SPIRIT_IDS } from './spirits.js';
@@ -199,8 +199,11 @@ function shopScreen(app) {
 
 // ---------- settings ----------
 // Three volume sliders (music, ambience, sound effects), the tap controls
-// switch, mute and resume. Only its own tap targets are live while it is open.
+// switch, mute and resume, and, set apart at the bottom, RESET PROGRESS (it
+// asks first). Only its own tap targets are live while it is open.
 export const SET_Y = 54;
+export const SET_H = 256;
+export const RESET_BTN = { x: 34, y: SET_Y + 222, w: 112, h: 16 };
 export const SLIDER = { x: 24, w: 132 };
 export const SLIDER_ROWS = { music: SET_Y + 32, amb: SET_Y + 62, sfx: SET_Y + 92 };
 function slider(key, labelStr, v, y) {
@@ -219,7 +222,7 @@ function settingsPanel(app) {
   clearHits();
   dim();
   hit(0, 0, W, H, () => app.closeSettings(), 'backdrop');
-  const x = 10, w = 160, h = 214;
+  const x = 10, w = 160, h = SET_H;
   panel(x, SET_Y, w, h);
   hit(x, SET_Y, w, h, () => {}, 'panel'); // taps on the card do not close it
   text('SETTINGS', 90, SET_Y + 8, { font: 'big', align: 'center', color: C.redD, outline: null });
@@ -235,6 +238,33 @@ function settingsPanel(app) {
   hit(x + 4, ty - 4, w - 8, 28, () => app.toggleTapControls());
   button(SLIDER.x, SET_Y + 156, SLIDER.w, 18, app.muted ? 'SOUND: MUTED' : 'SOUND: ON', app.muted ? C.redD : C.steelD, () => app.toggleMute());
   button(SLIDER.x, SET_Y + 182, SLIDER.w, 18, app.g && app.g.phase === 'play' && app.screen === 'game' ? 'RESUME' : 'DONE', C.greenD, () => app.closeSettings());
+  // Danger zone: a gap and a dashed red rule keep it away from RESUME.
+  for (let dx = x + 8; dx < x + w - 8; dx += 4) R(dx, SET_Y + 212, 2, 1, C.redL);
+  const b = RESET_BTN;
+  button(b.x, b.y, b.w, b.h, RESET_TEXT.button, C.red, () => app.askReset());
+  text(RESET_TEXT.note, 90, b.y + b.h + 5, { align: 'center', color: C.greyD, outline: null });
+  if (app.confirmReset) resetConfirm(app);
+}
+
+// Are you sure? KEEP is the big default; a tap outside the card also keeps.
+// RESET sits away from where RESET PROGRESS was, so a double tap can't erase.
+export const CONFIRM = { x: 16, y: 104, w: 148, h: 150 };
+function resetConfirm(app) {
+  clearHits();
+  dim(0.6);
+  hit(0, 0, W, H, () => app.keepProgress(), 'backdrop');
+  const { x, y, w, h } = CONFIRM;
+  panel(x, y, w, h);
+  hit(x, y, w, h, () => {}, 'panel');
+  R(x + 2, y + 2, w - 4, 3, C.red);
+  text(RESET_TEXT.title, 90, y + 11, { font: 'big', align: 'center', color: C.redD, outline: null });
+  let ty = y + 26;
+  for (const r of wrap(RESET_TEXT.body, w - 20)) { text(r, 90, ty, { align: 'center', color: C.ink, outline: null }); ty += 8; }
+  ty += 3;
+  text(RESET_TEXT.kept, 90, ty, { align: 'center', color: C.greenD, outline: null });
+  text(RESET_TEXT.undo, 90, ty + 9, { align: 'center', color: C.redD, outline: null });
+  button(x + 12, y + 84, w - 24, 22, RESET_TEXT.keep, C.greenD, () => app.keepProgress(), 'ui', 'big');
+  button(x + 34, y + 120, w - 68, 16, RESET_TEXT.reset, C.red, () => app.resetProgress());
 }
 
 // ---------- level intro card ----------

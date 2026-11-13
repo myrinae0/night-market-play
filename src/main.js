@@ -13,23 +13,17 @@ import { setCustomerScale, registerFoodArt } from './sprites.js';
 import { classify, flickAction, accepts, drop, findTarget, offTray, dragHint, missHint, DRAG_DIST } from './drag.js';
 import { SPIRITS, PEOPLE_QUIPS, isSpirit } from './spirits.js';
 import {
-  sceneFor, sceneById, startScene, advance, choose, skip, finishScene, newStory, normalizeStory, relTips, unlockMemory,
+  sceneFor, sceneById, startScene, advance, choose, skip, finishScene, relTips, unlockMemory,
 } from './story.js';
+import { freshSave, normalizeSave, clearProgress } from './save.js';
 
 const params = new URLSearchParams(location.search);
 const NOSAVE = params.has('nosave') || params.has('shot');
 const SAVE_KEY = 'chimaekNightMarket.v1';
 
 function loadSave() {
-  const d = { stars: {}, muted: false, musicVol: 0.7, ambVol: 0.6, sfxVol: 1, tapControls: false, wallet: 0, upgrades: {}, story: newStory() };
-  if (NOSAVE) return d;
-  try {
-    const s = { ...d, ...JSON.parse(localStorage.getItem(SAVE_KEY) || '{}') };
-    s.story = normalizeStory(s.story);
-    if (!s.upgrades || typeof s.upgrades !== 'object') s.upgrades = {};
-    s.wallet = Math.max(0, Math.round(Number(s.wallet) || 0));
-    return s;
-  } catch { return d; }
+  if (NOSAVE) return freshSave();
+  try { return normalizeSave(JSON.parse(localStorage.getItem(SAVE_KEY) || '{}')); } catch { return freshSave(); }
 }
 function writeSave(s) {
   if (NOSAVE) return;
@@ -73,15 +67,29 @@ const seedParam = params.has('seed') ? Number(params.get('seed')) : undefined;
 
 const app = {
   screen: 'title', g: null, fx: createFx(), time: 0, save, muted: save.muted,
-  vol: audio.volumes(), settings: false, slider: null, drag: null, snap: null,
+  vol: audio.volumes(), settings: false, confirmReset: false, slider: null, drag: null, snap: null,
   slide: null, pointer: null, reg: { hits: [], sources: [], targets: [], trayBox: null },
   shownCoins: 0, endAt: 0, frozen: false, banner: null, nightMemories: new Set(), lastPay: 0,
   dlg: null, dlgT: 0, dlgThen: null, shopNext: null, shopMsg: null,
 
   toggleMute() { app.muted = !app.muted; audio.setMuted(app.muted); save.muted = app.muted; writeSave(save); audio.play('tap'); },
   // The settings panel pauses the game while it is open.
-  openSettings() { app.settings = true; app.drag = null; if (app.g) app.g.held = null; },
-  closeSettings() { app.settings = false; app.slider = null; },
+  openSettings() { app.settings = true; app.confirmReset = false; app.drag = null; if (app.g) app.g.held = null; },
+  closeSettings() { app.settings = false; app.confirmReset = false; app.slider = null; },
+  // RESET PROGRESS in settings asks first (KEEP is the default).
+  askReset() { app.confirmReset = true; app.slider = null; },
+  keepProgress() { app.confirmReset = false; },
+  // Erases levels, stars, purse, upgrades and the story, keeps the settings,
+  // and ends any level or scene that is open, then shows the title.
+  resetProgress() {
+    clearProgress(save);
+    writeSave(save);
+    app.closeSettings();
+    app.dlg = null; app.dlgThen = null; app.shopNext = null; app.shopMsg = null;
+    app.slide = null; app.snap = null; app.nightMemories = new Set(); app.lastPay = 0; app.shownCoins = 0;
+    app.toTitle();
+    audio.play('trash');
+  },
   setVolume(key, v) {
     v = Math.round(Math.max(0, Math.min(1, v)) * 20) / 20; // 5% steps
     if (key === 'music') audio.setMusicVolume(v);
@@ -436,6 +444,10 @@ window.addEventListener('keydown', (e) => {
   audio.unlock();
   const g = app.g;
   if (e.key === 'm' || e.key === 'M') return app.toggleMute();
+  if (app.confirmReset) { // only KEEP (Escape, P) or a tap on RESET
+    if (e.key === 'Escape' || e.key === 'p' || e.key === 'P') app.keepProgress();
+    return;
+  }
   if (e.key === 'p' || e.key === 'P' || (e.key === 'Escape' && (app.settings || !g || !g.held))) {
     return app.settings ? app.closeSettings() : app.openSettings();
   }
@@ -562,6 +574,9 @@ const SHOTS = {
   shop() { save.wallet = 260; save.stars = { 5: 2 }; save.upgrades = { fastfry: true }; app.openShop(6); },
   settings() { SHOTS.grill(); app.setVolume('music', 0.6); app.setVolume('amb', 0.45); app.openSettings(); },
   settingstap() { save.tapControls = true; SHOTS.settings(); },
+  // Settings from the title (RESET PROGRESS at the bottom), and its confirmation mid-level.
+  settingsreset() { SHOTS.title(); app.setVolume('music', 0.6); app.openSettings(); },
+  resetconfirm() { SHOTS.settings(); app.askReset(); },
   saucehint() {
     save.tapControls = true; play(2);
     const g = app.g;

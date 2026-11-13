@@ -1,0 +1,288 @@
+// Pixel maps drawn for this game (MIT), 16 x 16, in the style of the CC0 food
+// pack: the pack's dark brown outline, flat two- or three-tone shading, light
+// from the top left. Used where no CC0 sprite exists: the spirits (original
+// designs) and the wok dishes. Pure data; sprites.js turns them into canvases.
+
+export const OL = '#3a2229'; // the food pack's outline brown
+
+// ---------- spirits ----------
+export const SPIRIT_ART = {
+  // Lantern ghost: a paper lantern with a sleepy face, a wisp for feet.
+  lantern: {
+    pal: { k: OL, c: '#5a3328', p: '#f6dca8', q: '#e3b071', y: '#fff3c4', r: '#d8333f', e: '#2a1a20', m: '#f2a0a0', w: '#d8e8f8', v: '#a8c4e0' },
+    frames: [[
+      '......kkkk......',
+      '.....kcccck.....',
+      '...kkkkkkkkkk...',
+      '..kyppppppppqk..',
+      '.kyppppppppppqk.',
+      '.krrrrrrrrrrrrk.',
+      '.kypppppppppqqk.',
+      '.kpeepppppeepqk.',
+      '.kpmpppppppmpqk.',
+      '.kppppppkkpppqk.',
+      '.krrrrrrrrrrrrk.',
+      '..kppppppppppk..',
+      '...kkkkkkkkkk...',
+      '.....kcccck.....',
+      '......kwwk......',
+      '.......wv.......',
+    ]],
+  },
+  // Fox spirit: a round white mask with red marks; the mask (drawn on top)
+  // slips while they wait, and a yellow eye peeks out.
+  fox: {
+    pal: { k: OL, o: '#e0873a', d: '#b45f22', i: '#f2a0a0', w: '#fbf1e0', g: '#fee761', b: '#3a4a8a', u: '#5a6ab0', t: '#fbf1e0', e: '#2a1a20' },
+    frames: [[
+      '..k..........k..',
+      '.kok........kok.',
+      '.koik......kiok.',
+      '.kooikkkkkkiook.',
+      '.kooooooooooook.',
+      '.kooooooooooook.',
+      '.kdoooooooooodk.',
+      '.kooogoooogoook.',
+      '.kooooooooooook.',
+      '.kwoooooooooowk.',
+      '..kwwwwkkwwwwk..',
+      '...kkkkkkkkkk.kk',
+      '..kbbbuubbbbkkok',
+      '.kbbbbuubbbbbkok',
+      '.kbbbbuubbbbbktk',
+      '.kkkkkkkkkkkkkk.',
+    ]],
+    mask: {
+      pal: { k: OL, m: '#fbf6ea', n: '#d9cfc0', e: '#2a1a20', r: '#d8333f' },
+      rows: ['.kkkkkkkk.', 'kmmmmmmmnk', 'kmeemmeenk', 'kmrmmmmrnk', 'kmmmrrmmnk', '.kmmmmmnk.', '..kkkkkk..'],
+      x: 3, y: 4,
+    },
+  },
+  // Moss golem: a slow heap of mossy stones with a small white flower on top.
+  moss: {
+    pal: { k: OL, s: '#8b9bb4', d: '#5c6884', l: '#c0cbdc', g: '#63c74d', G: '#3e8948', f: '#fff8ec', y: '#fee761', e: '#1c1418', b: '#f2a0a0' },
+    frames: [[
+      '.......f........',
+      '......fyf.......',
+      '.......fG.......',
+      '....kkkkGkkk....',
+      '...kgggGgggggk..',
+      '..kgGgggggGgggk.',
+      '.kgggsslllsgggk.',
+      '.kGgslllllllsGk.',
+      '.ksslesssseslsk.',
+      'kdkssbsssssbskdk',
+      'kdkssssddssssskd',
+      'kkksdssssssdssk.',
+      '..ksssslsssssk..',
+      '..kdssssssssdk..',
+      '..kdddkkkkdddk..',
+      '...kkk....kkk...',
+    ]],
+  },
+  // Rain frog: round and blue-grey, raindrops on its back, a paper boat for a hat.
+  frog: {
+    pal: { k: OL, p: '#f4ead2', P: '#cdbf9e', f: '#7a9cc0', F: '#4f6f96', l: '#b4cde4', w: '#fbf6ea', e: '#1c1418', b: '#f2a0a0', d: '#2ce8f5' },
+    frames: [[
+      '......k.........',
+      '.....kpk........',
+      '....kpPpk.......',
+      '..kkkkkkkkkkk...',
+      '..kpppppppppk...',
+      '...kPPPPPPPk....',
+      '..kkk.....kkk...',
+      '.kwwek...kewwk..',
+      '.kwwek...kewwk..',
+      '.kfkkfffffkkfk..',
+      'kfffflfffffffk..',
+      'kfbfffffffbffk.d',
+      'kffkkkkkkkkffk..',
+      '.kfflllllllffk..',
+      'kFfkFFkkkFFkfFk.',
+      'kkkk..k.k...kkkk',
+    ]],
+  },
+  // Moth postman: soft grey, lilac wings, a postbag on one shoulder.
+  moth: {
+    pal: { k: OL, a: '#c9b8e8', A: '#9a86c4', m: '#e8e2d8', M: '#b8ae9e', e: '#1c1418', b: '#b86f50', B: '#733e39', l: '#fbf6ea' },
+    frames: [[
+      '..k..........k..',
+      '...k........k...',
+      '....k.kkkk.k....',
+      'kkk..kmmmmk..kkk',
+      'kaak.kmmmmk.kaak',
+      'kaaakmemmemkaaak',
+      'kaAaakmmmmkaaAak',
+      'kaAAakMmmMkaAAak',
+      '.kaAakmmmmkaAak.',
+      '.kaaakMbbBkaaak.',
+      '..kaakmbllBkaak.',
+      '..kaakmbllBkak..',
+      '...kakmMbBkak...',
+      '....kkmmmmkk....',
+      '......kMMk......',
+      '.......kk.......',
+    ]],
+  },
+  // Paper crane: folded from a recipe page, ink lines on its wings.
+  crane: {
+    pal: { k: OL, w: '#fbf6ea', s: '#d9cfc0', i: '#5a6380', r: '#d8333f', e: '#1c1418' },
+    frames: [[
+      '................',
+      '..k.............',
+      '.kwk............',
+      'krwwk...........',
+      '..kewk......kk..',
+      '...kwk.....kwsk.',
+      '....kwk...kwisk.',
+      '....kwwkkkwwsk..',
+      '...kwwwwwwwisk..',
+      '..kwiwwwwwwssk..',
+      '..kwwiwiwwsssk..',
+      '...kwwwwwsssk...',
+      '....kkwwwssk....',
+      '......kkwkk.....',
+      '.......kk.......',
+      '................',
+    ]],
+  },
+  // Steam wisp (level 7, part 2): a small curl of steam with two dot eyes.
+  wisp: {
+    pal: { k: '#6a7290', w: '#f2f4fa', s: '#c8cee0', e: '#1c1418' },
+    frames: [[
+      '................',
+      '.......kk.......',
+      '......kwwk......',
+      '.....kwsk.......',
+      '.....kwk........',
+      '......kwkk......',
+      '.....kkwwwk.....',
+      '....kwwwwwwk....',
+      '...kwwwwwwwsk...',
+      '...kwewwwewsk...',
+      '...kwwwwwwwsk...',
+      '....kwwwwwsk....',
+      '.....kswwsk.....',
+      '......kssk......',
+      '.......kk.......',
+      '................',
+    ]],
+  },
+};
+
+// ---------- wok dishes (no CC0 sprite for these) ----------
+export const FOOD_ART = {
+  // Raw rice cakes (garae-tteok), three white sticks.
+  tteok_raw: {
+    pal: { k: OL, w: '#fbf6ea', s: '#ddd2bc', h: '#ffffff' },
+    rows: [
+      '................',
+      '................',
+      '.......kkkkkkk..',
+      '......khwwwwwsk.',
+      '......kwwwwwssk.',
+      '..kkkkkkkkkkkk..',
+      '.khwwwwwssk.....',
+      '.kwwwwwwssk.....',
+      '..kkkkkkkkkkkk..',
+      '....khwwwwwwsk..',
+      '....kwwwwwwssk..',
+      '.....kkkkkkkk...',
+      '................',
+      '................',
+      '................',
+      '................',
+    ],
+  },
+  // Tteokbokki: rice cakes in red chili sauce, a fish cake, scallion bits.
+  tteokbokki: {
+    pal: { k: OL, o: '#e8532e', y: '#ff8a5c', r: '#b32a2a', f: '#f6d9a0', g: '#63c74d', w: '#ffd2b0' },
+    rows: [
+      '................',
+      '................',
+      '.......kkkkkkk..',
+      '......kywwooork.',
+      '......koooooork.',
+      '..kkkkkkkkkkrk..',
+      '.kywwoooork.k...',
+      '.kooogooorkkkk..',
+      '..kkkkkkkkfffk..',
+      '...krkywwoofk...',
+      '..krrkooogorrk..',
+      '.krrrrkkkkkrrrk.',
+      '.krrorrrrorrrrk.',
+      '..kkrrrrrrrrkk..',
+      '....kkkkkkkk....',
+      '................',
+    ],
+  },
+  // Raw glass noodles (dangmyeon): a grey bundle tied in the middle.
+  noodles_raw: {
+    pal: { k: OL, n: '#d8d4cc', s: '#a8a49c', h: '#f4f2ee', t: '#b86f50' },
+    rows: [
+      '................',
+      '................',
+      '..kk.kk.kk.kk...',
+      '..knknknknknk...',
+      '..khnhnsnhnsk...',
+      '...knnnnnnnk....',
+      '....knsnhnk.....',
+      '....kttttttk....',
+      '....kttttttk....',
+      '....knhnsnk.....',
+      '...knnhnnsnk....',
+      '..knhnsnhnsnk...',
+      '..knnnnnnnnnk...',
+      '..kk.kk.kk.kk...',
+      '................',
+      '................',
+    ],
+  },
+  // Japchae: glossy brown noodles, carrot, spinach, mushroom, sesame.
+  japchae: {
+    pal: { k: OL, n: '#9a5a32', h: '#c88a52', o: '#f77622', g: '#3e8948', m: '#5a3a2a', w: '#fbf6ea' },
+    rows: [
+      '................',
+      '................',
+      '................',
+      '.....kkkkkk.....',
+      '...kkhnnhngkk...',
+      '..khnnogwnhnnk..',
+      '.khnhnnnnnmnhnk.',
+      '.knnwhnoghnnnnk.',
+      'khngnnhnnnwhnonk',
+      'knhnmnnhognnhnnk',
+      'knnnhnwnnnhnnmnk',
+      '.knhnnognhnwnnk.',
+      '..kknnnhnnnnkk..',
+      '....kkkkkkkk....',
+      '................',
+      '................',
+    ],
+  },
+  // Raw rice is the pack's rice_ball sprite (assets.js); fried rice is drawn:
+  // a golden mound with peas, carrot and egg.
+  friedrice: {
+    pal: { k: OL, r: '#f2c45a', h: '#ffe08a', d: '#c8902a', g: '#63c74d', o: '#f77622', y: '#fee761' },
+    rows: [
+      '................',
+      '................',
+      '................',
+      '......kkkk......',
+      '....kkhhrrkk....',
+      '...khhrrgrrrk...',
+      '..khrrorrryrrk..',
+      '..khrrrrgrrrdk..',
+      '.khrgrryrrrordk.',
+      '.krrrorrrgrrrdk.',
+      'khrrrrrrrrryrrdk',
+      'krrgrryrrorrrddk',
+      '.kddrrrrrrrrddk.',
+      '..kkddddddddkk..',
+      '....kkkkkkkk....',
+      '................',
+    ],
+  },
+};
+
+// Every map is 16 x 16 (tests check this) except the fox's mask overlay.
+export function mapRows(rows) { return rows.map((r) => r.padEnd(16, '.').slice(0, 16)); }

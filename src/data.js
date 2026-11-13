@@ -139,3 +139,16 @@ export const UPGRADES = [
 ];
 // The shop opens after you clear this level (then between every night after it).
 export const SHOP_FROM_LEVEL = 5;
+
+// Settings: reset progress and its confirmation (tests/story.test.js checks
+// these fit the font).
+export const RESET_TEXT = {
+  button: 'RESET PROGRESS',
+  note: 'YOUR SETTINGS ARE KEPT',
+  title: 'RESET PROGRESS?',
+  body: 'THIS ERASES YOUR LEVELS, STARS, PURSE, UPGRADES, STORY AND MEMORIES.',
+  kept: 'SOUND AND CONTROL SETTINGS STAY.',
+  undo: 'IT CANNOT BE UNDONE.',
+  keep: 'KEEP',
+  reset: 'RESET',
+};
