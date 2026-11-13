@@ -1,0 +1,13 @@
+"16x16 Food" by ARoachIFoundOnMyPillow
+Source: https://opengameart.org/content/16x16-food  (file: food.zip)
+License: CC0 1.0 Universal (Public Domain Dedication)
+         https://creativecommons.org/publicdomain/zero/1.0/
+
+The OpenGameArt page lists the license as CC0. The zip contains only the PNG
+files (no license file of its own), so this file records the license and source.
+Only the sprites this game uses are kept here, unmodified (16 x 16 PNG):
+  canned_food_4 (soda), sushi_roll (kimbap), sandwich (egg toast),
+  steak_raw / steak_grilled (galbi), sausage, chicken_drumstick_raw (raw chicken),
+  chicken_nuggets (fried chicken), honey_pot (honey), chili_pepper_green (chili),
+  chili_pepper_red (yangnyeom), garlic (soy garlic).
+Cooking stages (raw, battered, burnt) are recoloured copies made at run time.

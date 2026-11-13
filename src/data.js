@@ -16,15 +16,15 @@ export const ITEMS = {
   kimbap: { name: 'Kimbap', short: 'KIMBAP', station: 'counter', kind: 'ready', price: 5, unlock: 1 },
   toast: { name: 'Egg toast', short: 'TOAST', station: 'counter', kind: 'ready', price: 6, unlock: 1 },
   beer: { name: 'Beer', short: 'BEER', station: 'counter', kind: 'ready', price: 5, unlock: 3, drink: true },
-  skewer: { name: 'Chicken skewer', short: 'SKEWER', station: 'grill', kind: 'grill', price: 8, unlock: 2 },
+  galbi: { name: 'Galbi', short: 'GALBI', station: 'grill', kind: 'grill', price: 8, unlock: 2 },
   sausage: { name: 'Sausage', short: 'SAUSAGE', station: 'grill', kind: 'grill', price: 7, unlock: 2 },
   chicken: { name: 'Fried chicken', short: 'CHICKEN', station: 'fryer', kind: 'fry', price: 12, unlock: 3 },
 };
 
 // Sauces go on finished food on the tray. Each sauce only suits its station's food.
 export const SAUCES = {
-  spicy: { name: 'Spicy glaze', short: 'SPICY', station: 'grill', price: 1 },
-  honey: { name: 'Honey butter', short: 'HONEY', station: 'grill', price: 1 },
+  spicy: { name: 'Green chili', short: 'CHILI', station: 'grill', price: 1 },
+  honey: { name: 'Honey', short: 'HONEY', station: 'grill', price: 1 },
   yangnyeom: { name: 'Yangnyeom', short: 'YANGNYEOM', station: 'fryer', price: 2 },
   soygarlic: { name: 'Soy garlic', short: 'SOY GARLIC', station: 'fryer', price: 2 },
 };
@@ -52,7 +52,7 @@ export const LEVELS = [
     },
   },
   {
-    n: 2, title: 'Smoke and skewers', stations: ['counter', 'grill'], customers: 7, seed: 202,
+    n: 2, title: 'Smoke and sizzle', stations: ['counter', 'grill'], customers: 7, seed: 202,
     intro: {
       station: 'grill',
       heading: 'NEW: THE GRILL',

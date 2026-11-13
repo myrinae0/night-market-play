@@ -3,16 +3,18 @@ import { W, H, C, setCtx } from './gfx.js';
 import { LEVELS, COOK, ITEMS } from './data.js';
 import { grillState, fryState } from './logic.js';
 import * as G from './game.js';
-import { render, TABS_Y, PANEL_Y } from './render.js';
+import { render, TABS_Y, PANEL_Y, SLIDER } from './render.js';
 import { createFx, updateFx, spawn, floatText, coinBurst, bounce, toast } from './fx.js';
 import * as audio from './audio.js';
+import { loadAssets } from './assets.js';
+import { setCustomerScale } from './sprites.js';
 
 const params = new URLSearchParams(location.search);
 const NOSAVE = params.has('nosave') || params.has('shot');
 const SAVE_KEY = 'chimaekNightMarket.v1';
 
 function loadSave() {
-  const d = { stars: {}, muted: false };
+  const d = { stars: {}, muted: false, musicVol: 0.7, sfxVol: 1 };
   if (NOSAVE) return d;
   try { return { ...d, ...JSON.parse(localStorage.getItem(SAVE_KEY) || '{}') }; } catch { return d; }
 }
@@ -40,7 +42,8 @@ function resize() {
   screen.width = W * s; screen.height = H * s;
   const cssW = (W * s) / dpr, cssH = (H * s) / dpr;
   screen.style.width = `${cssW}px`; screen.style.height = `${cssH}px`;
-  offX = (vw - cssW) / 2; offY = (vh - cssH) / 2;
+  // Snap the canvas to whole device pixels so the browser never resamples it.
+  offX = Math.floor(((vw - cssW) / 2) * dpr) / dpr; offY = Math.floor(((vh - cssH) / 2) * dpr) / dpr;
   screen.style.left = `${offX}px`; screen.style.top = `${offY}px`;
   sctx.imageSmoothingEnabled = false;
 }
@@ -50,10 +53,22 @@ resize();
 // ---------- app ----------
 const save = loadSave();
 audio.setMuted(save.muted);
+audio.setMusicVolume(save.musicVol);
+audio.setSfxVolume(save.sfxVol);
 const app = {
   screen: 'title', g: null, fx: createFx(), time: 0, save, muted: save.muted,
+  vol: audio.volumes(), settings: false, drag: null,
   slide: null, pointer: null, hits: [], shownCoins: 0, endAt: 0, frozen: false,
   toggleMute() { app.muted = !app.muted; audio.setMuted(app.muted); save.muted = app.muted; writeSave(save); audio.play('tap'); },
+  // The settings panel pauses the game while it is open.
+  openSettings() { app.settings = true; if (app.g) app.g.held = null; },
+  closeSettings() { app.settings = false; app.drag = null; },
+  setVolume(key, v) {
+    v = Math.round(Math.max(0, Math.min(1, v)) * 20) / 20; // 5% steps
+    if (key === 'music') audio.setMusicVolume(v); else audio.setSfxVolume(v);
+    app.vol = audio.volumes();
+  },
+  saveVolumes() { save.musicVol = app.vol.music; save.sfxVol = app.vol.sfx; writeSave(save); },
   toTitle() { app.screen = 'title'; app.g = null; app.fx = createFx(); },
   newLevel(n) {
     app.screen = 'game';
@@ -104,6 +119,7 @@ function handleEvents() {
       const best = save.stars[g.level] || 0;
       if (e.stars > best) { save.stars[g.level] = e.stars; writeSave(save); }
       if (e.stars === 3) spawn(app.fx, 'top', 90, 100, 'confetti', 40);
+      if (e.stars > 0) audio.sting();
     }
   }
 }
@@ -163,7 +179,7 @@ let lastT = performance.now();
 function frame(now) {
   const dt = Math.min(0.05, (now - lastT) / 1000);
   lastT = now;
-  if (!app.frozen) step(dt);
+  if (!app.frozen && !app.settings) step(dt);
   draw();
   requestAnimationFrame(frame);
 }
@@ -181,21 +197,43 @@ function hitAt(p, tagFilter) {
   return null;
 }
 let down = null;
+// A volume slider grabbed in the settings panel follows the finger; the drag
+// never reaches the game (no swipes, no taps) and is saved on release.
+const sliderValue = (x) => (x - SLIDER.x) / SLIDER.w;
+function endDrag() {
+  if (!app.drag) return false;
+  if (app.drag.key === 'sfx') audio.play('grab'); // a sample at the new level
+  app.drag = null;
+  app.saveVolumes();
+  return true;
+}
 window.addEventListener('pointerdown', (e) => {
   audio.unlock();
   const p = toBuf(e);
   down = { ...p, t: performance.now(), id: e.pointerId };
   app.pointer = p;
+  if (app.settings) {
+    const h = hitAt(p);
+    if (h && String(h.tag).startsWith('slider:')) {
+      app.drag = { key: h.tag.slice(7), id: e.pointerId };
+      app.setVolume(app.drag.key, sliderValue(p.x));
+    }
+  }
 });
-window.addEventListener('pointermove', (e) => { app.pointer = toBuf(e); });
+window.addEventListener('pointermove', (e) => {
+  app.pointer = toBuf(e);
+  if (app.drag && app.drag.id === e.pointerId) app.setVolume(app.drag.key, sliderValue(app.pointer.x));
+});
+window.addEventListener('pointercancel', (e) => { if (app.drag && app.drag.id === e.pointerId) endDrag(); down = null; });
 window.addEventListener('pointerup', (e) => {
+  if (app.drag && app.drag.id === e.pointerId) { endDrag(); down = null; return; }
   if (!down || down.id !== e.pointerId) return;
   const p = toBuf(e);
   const dx = p.x - down.x, dy = p.y - down.y;
   const start = down;
   down = null;
   const g = app.g;
-  if (app.screen === 'game' && g && g.phase !== 'end' && start.y >= TABS_Y && Math.abs(dx) > 22 && Math.abs(dx) > Math.abs(dy) * 1.4) {
+  if (!app.settings && app.screen === 'game' && g && g.phase !== 'end' && start.y >= TABS_Y && Math.abs(dx) > 22 && Math.abs(dx) > Math.abs(dy) * 1.4) {
     app.switchStation(dx < 0 ? 1 : -1); // swipe left shows the station to the right
     return;
   }
@@ -205,12 +243,16 @@ window.addEventListener('pointerup', (e) => {
   if (g && g.held && h.tag !== 'tray' && !String(h.tag).startsWith('sauce:')) g.held = null;
   if (String(h.tag).startsWith('ready:') || String(h.tag).startsWith('bin:')) bounce(app.fx, h.tag);
   h.fn();
-  if (!g || h.tag === 'ui' || h.tag === 'tab' || h.tag === 'arrow') audio.play('tap');
+  if (!g || app.settings || h.tag === 'ui' || h.tag === 'tab' || h.tag === 'arrow' || h.tag === 'settings') audio.play('tap');
 });
 window.addEventListener('keydown', (e) => {
   audio.unlock();
   const g = app.g;
   if (e.key === 'm' || e.key === 'M') return app.toggleMute();
+  if (e.key === 'p' || e.key === 'P' || (e.key === 'Escape' && (app.settings || !g || !g.held))) {
+    return app.settings ? app.closeSettings() : app.openSettings();
+  }
+  if (app.settings) return; // the game is paused; keys don't reach it
   if (app.screen === 'title') {
     if (e.key === 'Enter' || e.key === ' ') app.newLevel(Math.max(...LEVELS.filter((L) => L.n === 1 || (save.stars[L.n - 1] || 0) >= 1).map((L) => L.n)));
     return;
@@ -252,8 +294,8 @@ const SHOTS = {
   grill() {
     app.newLevel(2); G.start(app.g); autoServe(); waitForCustomer();
     const g = app.g;
-    G.grillAdd(g, 'skewer'); run(3.2); G.grillFlip(g, 0); G.grillAdd(g, 'sausage'); run(2.6);
-    G.grillAdd(g, 'skewer'); run(1.2); G.grabReady(g, 'soda'); run(0.5);
+    G.grillAdd(g, 'galbi'); run(3.2); G.grillFlip(g, 0); G.grillAdd(g, 'sausage'); run(2.6);
+    G.grillAdd(g, 'galbi'); run(1.2); G.grabReady(g, 'soda'); run(0.5);
   },
   swipe() { SHOTS.grill(); app.switchStation(-1); app.slide.k = 0.4; },
   fryer() {
@@ -272,15 +314,28 @@ const SHOTS = {
   },
   shiba() { app.newLevel(3); G.start(app.g); for (let i = 0; i < 7; i++) autoServe(); waitForCustomer(); },
   end() { app.newLevel(1); G.start(app.g); while (app.g.phase === 'play') autoServe(); run(2.2); },
+  settings() { SHOTS.grill(); app.setVolume('music', 0.6); app.openSettings(); },
+  saucehint() {
+    app.newLevel(2); G.start(app.g); waitForCustomer();
+    const g = app.g;
+    g.tray.push({ item: 'galbi', cook: 'done', perfect: false, sauce: 'honey' });
+    G.grillAdd(g, 'sausage'); run(1); G.pickSauce(g, 'spicy'); run(0.3);
+  },
   locked() { app.newLevel(1); G.start(app.g); waitForCustomer(); app.goStation(3); run(0.5); },
 };
 
-const shot = params.get('shot');
-if (shot && SHOTS[shot]) {
-  SHOTS[shot]();
-  app.frozen = true;
-} else if (params.has('level')) {
-  app.newLevel(Math.max(1, Math.min(LEVELS.length, Number(params.get('level')) || 1)));
-}
+if (params.has('cs')) setCustomerScale(Math.max(1, Math.min(5, Number(params.get('cs')) || 3)));
 window.nightMarket = { app, G, step, SHOTS };
-requestAnimationFrame(frame);
+loadAssets().then(() => {
+  const shot = params.get('shot');
+  if (shot && SHOTS[shot]) {
+    SHOTS[shot]();
+    app.frozen = true;
+  } else if (params.has('level')) {
+    app.newLevel(Math.max(1, Math.min(LEVELS.length, Number(params.get('level')) || 1)));
+  }
+  window.nightMarket.ready = true;
+  requestAnimationFrame(frame);
+}).catch((e) => {
+  document.body.textContent = `Could not load the game art: ${e.message}`;
+});

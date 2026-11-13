@@ -235,12 +235,21 @@ export function pickSauce(g, sauce) {
   if (fits.length === 1) return applySauce(g, fits[0], sauce);
   if (fits.length === 0) {
     emit(g, 'sfx', { name: 'nope' });
-    emit(g, 'toast', { text: SAUCES[sauce].station === 'grill' ? 'PUT A SKEWER ON THE TRAY' : 'PUT CHICKEN ON THE TRAY' });
+    emit(g, 'toast', { text: sauceHint(g, sauce) });
     return false;
   }
   g.held = sauce;
   emit(g, 'sfx', { name: 'tap' });
   return true;
+}
+// Why no tray item can take this sauce, in a few words for the toast.
+// Food still cooking comes first: that is the item the player is thinking of.
+export function sauceHint(g, sauce) {
+  const st = SAUCES[sauce].station;
+  const cooking = st === 'grill' ? g.grill.some(Boolean) : (g.fryer.baskets.some(Boolean) || !!g.fryer.bowl);
+  if (cooking) return 'TAKE IT TO THE TRAY FIRST';
+  if (g.tray.some((t) => ITEMS[t.item].station === st && t.sauce)) return 'ALREADY SAUCED';
+  return st === 'grill' ? 'GRILL SOMETHING FIRST' : 'FRY CHICKEN FIRST';
 }
 export function applySauce(g, index, sauce = g.held) {
   const t = g.tray[index];

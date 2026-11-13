@@ -3,7 +3,7 @@ import { W, H, C, R, box, rbox, text, tw, mix, getCtx } from './gfx.js';
 import { ITEMS, SAUCES, COOK, STATIONS, LEVELS, TRAY_MAX } from './data.js';
 import { grillState, fryState, scoreServe, canSauce, isUnlocked } from './logic.js';
 import {
-  drawItem, drawBottle, coinIcon, lockIcon, speakerIcon, starIcon, heartIcon, drawCustomer, drawShiba,
+  drawItem, drawSauce, coinIcon, lockIcon, speakerIcon, gearIcon, starIcon, heartIcon, drawCustomer, drawShiba,
 } from './sprites.js';
 import { drawParts, drawFloats, bounceAmt } from './fx.js';
 import * as G from './game.js';
@@ -111,7 +111,7 @@ function awningAndCounter(t) {
   rbox(132, COUNTER_Y - 9, 32, 10, C.ink, C.ink);
   text('CHIMAEK', 148, COUNTER_Y - 7, { color: C.gold, align: 'center', outline: null });
   // the stall dog
-  drawShiba(22, COUNTER_Y + 4, { t });
+  drawShiba(20, COUNTER_Y + 2, { t });
 }
 
 // ---------- customer + order bubble ----------
@@ -183,11 +183,13 @@ function hud(app) {
     const n = Math.min(g.custIdx + 1, g.orders.length);
     text(`GUEST ${Math.max(1, n)}/${g.orders.length}`, 96, 4, { color: C.cream });
     // home button
-    R(146, 4, 7, 1, C.grey); R(146, 6, 7, 1, C.grey); R(146, 8, 7, 1, C.grey);
-    hit(142, 0, 14, 14, () => app.toTitle());
+    R(138, 4, 7, 1, C.grey); R(138, 6, 7, 1, C.grey); R(138, 8, 7, 1, C.grey);
+    hit(134, 0, 14, 14, () => app.toTitle());
   } else text('CHIMAEK NIGHT MARKET', 4, 4, { color: C.gold });
-  speakerIcon(164, 2, app.muted);
-  hit(158, 0, 22, 14, () => app.toggleMute());
+  gearIcon(151, 3);
+  hit(148, 0, 14, 14, () => app.openSettings(), 'settings');
+  speakerIcon(166, 2, app.muted);
+  hit(162, 0, 18, 14, () => app.toggleMute());
 }
 
 // ---------- station tabs ----------
@@ -275,7 +277,6 @@ function counterPanel(app, ox, live) {
     const b = bounceAmt(app.fx, `ready:${id}`);
     R(sx + 14, sy + 44, 56, 4, C.ink); R(sx + 15, sy + 44, 54, 3, C.cream); // plate
     drawItem(id, sx + 26, sy + 10 - b, { scale: 2 });
-    drawItem(id, sx + 6, sy + 28, {}); drawItem(id, sx + 62, sy + 28, {});
     text(ITEMS[id].short, sx + 42, sy + 52, { color: C.white, align: 'center' });
     coinIcon(sx + 66, sy + 51); text(String(ITEMS[id].price), sx + 75, sy + 52, { color: C.yellow });
     if (live) hit(sx, sy, 84, 66, () => G.grabReady(g, id), `ready:${id}`);
@@ -283,43 +284,41 @@ function counterPanel(app, ox, live) {
 }
 
 function bin(x, y, w, item, labelStr, opts, onTap, key, app) {
-  rbox(x, y, w, 24, C.steel);
-  R(x + 2, y + 2, w - 4, 20, C.steelD);
+  rbox(x, y, w, 34, C.steel);
+  R(x + 2, y + 2, w - 4, 30, C.steelD);
   const b = key ? bounceAmt(app.fx, key) : 0;
-  drawItem(item, x + w / 2 - 14, y + 2 - b, opts);
-  drawItem(item, x + w / 2 - 4, y + 6 - b, opts);
-  label(labelStr, x + w / 2, y + 26);
-  if (onTap) hit(x, y, w, 32, onTap, key);
+  drawItem(item, x + Math.floor(w / 2) - 16, y + 1 - b, { ...opts, scale: 2 });
+  label(labelStr, x + w / 2, y + 36);
+  if (onTap) hit(x, y, w, 42, onTap, key);
 }
 function sauceShelf(app, ox, ids, live) {
   const g = app.g;
   ids.forEach((id, i) => {
-    const bx = ox + 116 + i * 32;
+    const bx = ox + 100 + i * 40;
     const held = g.held === id;
-    if (held) R(bx - 2, PANEL_Y + 2, 32, 34, mix(C.gold, C.woodDD, 0.5));
-    drawBottle(id, bx + 8, PANEL_Y + 4, held);
+    if (held) R(bx, PANEL_Y + 1, 40, 42, mix(C.gold, C.woodDD, 0.5));
+    drawSauce(id, bx + 4, PANEL_Y + 2, held, 2);
     const words = SAUCES[id].short.split(' ');
-    const names = id === 'yangnyeom' ? ['YANG', 'NYEOM'] : words;
-    names.forEach((n, j) => label(n, bx + 14, PANEL_Y + 26 + j * 6, held ? C.yellow : C.cream));
-    if (live) hit(bx - 2, PANEL_Y + 2, 32, 36, () => G.pickSauce(g, id), `sauce:${id}`);
+    label(words.join(' '), bx + 20, PANEL_Y + 36, held ? C.yellow : C.cream);
+    if (live) hit(bx, PANEL_Y + 1, 40, 44, () => G.pickSauce(g, id), `sauce:${id}`);
   });
 }
 
 function grillPanel(app, ox, live) {
   const g = app.g, t = app.time;
   panelBg(ox);
-  bin(ox + 4, PANEL_Y + 4, 52, 'skewer', 'SKEWER', { p: 0 }, live && (() => G.grillAdd(g, 'skewer')), 'bin:skewer', app);
-  bin(ox + 60, PANEL_Y + 4, 52, 'sausage', 'SAUSAGE', { p: 0 }, live && (() => G.grillAdd(g, 'sausage')), 'bin:sausage', app);
+  bin(ox + 4, PANEL_Y + 2, 44, 'galbi', 'GALBI', { p: 0 }, live && (() => G.grillAdd(g, 'galbi')), 'bin:galbi', app);
+  bin(ox + 52, PANEL_Y + 2, 44, 'sausage', 'SAUSAGE', { p: 0 }, live && (() => G.grillAdd(g, 'sausage')), 'bin:sausage', app);
   sauceShelf(app, ox, ['spicy', 'honey'], live);
   // grill body
-  const gy = PANEL_Y + 42;
-  rbox(ox + 3, gy, 174, 102, C.steelD);
-  R(ox + 6, gy + 3, 168, 96, '#1e1820');
+  const gy = PANEL_Y + 46;
+  rbox(ox + 3, gy, 174, 98, C.steelD);
+  R(ox + 6, gy + 3, 168, 92, '#1e1820');
   // coals
   for (let x = 8; x < 172; x += 4) {
     const f = Math.sin(t * 5 + x * 0.7) * 0.5 + 0.5;
-    R(ox + x, gy + 88, 3, 8, mix(C.redD, C.orange, f * 0.8));
-    R(ox + x + 1, gy + 88, 1, 2, mix(C.orange, C.yellow, f));
+    R(ox + x, gy + 86, 3, 8, mix(C.redD, C.orange, f * 0.8));
+    R(ox + x + 1, gy + 86, 1, 2, mix(C.orange, C.yellow, f));
   }
   for (let y = gy + 8; y < gy + 44; y += 7) R(ox + 6, y, 168, 1, C.steelD);
   g.grill.forEach((it, i) => {
@@ -333,7 +332,7 @@ function grillPanel(app, ox, live) {
     const flipAge = it.flipT != null ? g.time - it.flipT : 9;
     const hop = flipAge < 0.25 ? -Math.round(Math.sin((flipAge / 0.25) * Math.PI) * 6) : 0;
     const up = it.sides[1 - it.down], down = it.sides[it.down];
-    drawItem(it.item, sx + 12, gy + 6 + hop - bounceAmt(app.fx, `grill:${i}`), { up, down, scale: 2 });
+    drawItem(it.item, sx + 12, gy + 5 + hop - bounceAmt(app.fx, `grill:${i}`), { up, down, scale: 2 });
     meter(sx + 10, gy + 44, 40, 3, it.sides[0], COOK.grill, it.down === 0);
     meter(sx + 10, gy + 51, 40, 3, it.sides[1], COOK.grill, it.down === 1);
     // which side is on the heat
@@ -349,16 +348,16 @@ function grillPanel(app, ox, live) {
 function fryerPanel(app, ox, live) {
   const g = app.g, t = app.time;
   panelBg(ox);
-  bin(ox + 4, PANEL_Y + 4, 50, 'chicken', 'CHICKEN', { raw: true }, live && (() => G.fryAdd(g)), 'bin:chicken', app);
+  bin(ox + 4, PANEL_Y + 2, 44, 'chicken', 'CHICKEN', { raw: true }, live && (() => G.fryAdd(g)), 'bin:chicken', app);
   // batter bowl
-  const bx = ox + 58, by = PANEL_Y + 4;
+  const bx = ox + 46, by = PANEL_Y + 10;
   R(bx + 2, by + 8, 50, 16, C.ink); R(bx + 4, by + 22, 46, 3, C.ink);
   R(bx + 3, by + 9, 48, 13, C.cream); R(bx + 5, by + 9, 44, 3, C.white);
   R(bx + 3, by + 15, 48, 7, '#d8e0f0'); R(bx + 4, by + 16, 3, 4, C.white);
   const bowl = g.fryer.bowl;
   if (bowl) {
     const dip = bowl.dipping > 0 ? Math.round(Math.sin((1 - bowl.dipping / 0.45) * Math.PI) * 6) : 0;
-    drawItem('chicken', bx + 19, by + 2 + dip, { raw: !bowl.battered, p: 0 });
+    drawItem('chicken', bx + 11, by - 12 + dip, { raw: !bowl.battered, p: 0, scale: 2 });
     R(bx + 3, by + 15, 48, 7, '#d8e0f0'); // bowl front over the chicken
     R(bx + 4, by + 16, 3, 4, C.white);
     const msg = bowl.dipping > 0 ? 'DIPPING' : bowl.battered ? 'TAP: BASKET' : 'TAP TO DIP';
@@ -367,9 +366,9 @@ function fryerPanel(app, ox, live) {
   if (live) hit(bx, by, 54, 32, () => G.fryDip(g), 'bowl');
   sauceShelf(app, ox, ['yangnyeom', 'soygarlic'], live);
   // fryer
-  const fy = PANEL_Y + 42;
-  rbox(ox + 3, fy, 174, 102, C.steel);
-  R(ox + 6, fy + 3, 168, 96, C.steelD);
+  const fy = PANEL_Y + 46;
+  rbox(ox + 3, fy, 174, 98, C.steel);
+  R(ox + 6, fy + 3, 168, 92, C.steelD);
   R(ox + 9, fy + 14, 162, 62, C.oilD);
   for (let y = fy + 14; y < fy + 76; y += 2) R(ox + 9, y, 162, 1, mix(C.oil, C.oilD, (y - fy - 14) / 70));
   for (let x = 0; x < 162; x += 3) R(ox + 9 + x, fy + 14 + Math.round(Math.sin(t * 3 + x * 0.3)), 2, 1, mix(C.oil, C.yellow, 0.4));
@@ -382,13 +381,12 @@ function fryerPanel(app, ox, live) {
     for (let y = fy + 12; y < fy + 46; y += 6) R(x0 + 12, y, 57, 1, mix(C.grey, C.oilD, 0.5));
     if (!it) { text('EMPTY', x0 + 40, fy + 26, { color: C.cream, outline: C.oilD, align: 'center' }); return; }
     drawItem('chicken', x0 + 24, fy + 12 - lift, { p: it.p, scale: 2 });
-    for (let y = fy + 34; y < fy + 46; y += 1) if (y % 2 === 0) R(x0 + 22, y, 36, 1, mix(C.oil, C.oilD, 0.3)); // oil line over the bottom
     meter(x0 + 8, fy + 52, 64, 4, it.p, COOK.fry, true);
     const st = fryState(it);
     button(x0 + 15, fy + 62, 50, 13, st === 'burnt' ? 'TOSS' : 'LIFT', st === 'done' ? C.greenD : st === 'burnt' ? C.redD : C.steelD, live && (() => G.fryLift(g, i)), `lift:${i}`);
     if (live) hit(x0 + 12, fy + 4, 56, 44, () => G.fryLift(g, i), `lift:${i}`);
   });
-  label('GOLD = PERFECT', ox + 90, fy + 88, C.cream);
+  label('GOLD = PERFECT', ox + 90, fy + 86, C.cream);
 }
 
 function lockedPanel(app, ox, s) {
@@ -479,6 +477,38 @@ function panel(x, y, w, h) {
   R(x + 2, y + 2, w - 4, h - 4, C.white);
 }
 
+// Settings / pause panel: music and sound-effect volume sliders, mute, done.
+// Only its own tap targets are live while it is open.
+export const SLIDER = { x: 28, w: 124 };
+const SET_Y = 92;
+export const SLIDER_ROWS = { music: SET_Y + 36, sfx: SET_Y + 72 };
+function slider(key, labelStr, v, y) {
+  const { x, w } = SLIDER;
+  text(labelStr, x, y, { font: 'big', color: C.ink, outline: null });
+  text(`${Math.round(v * 100)}%`, x + w, y + 1, { color: C.greyD, outline: null, align: 'right' });
+  const ty = y + 15;
+  R(x, ty, w, 4, C.greyDD);
+  R(x, ty, Math.round(v * w), 4, C.gold);
+  const kx = x + Math.round(v * w) - 3;
+  rbox(kx, ty - 4, 7, 12, C.redD);
+  R(kx + 2, ty - 2, 3, 1, C.redL);
+  hit(x - 10, y - 4, w + 20, 30, () => {}, `slider:${key}`);
+}
+function settingsPanel(app) {
+  hits = [];
+  dim();
+  hit(0, 0, W, H, () => app.closeSettings(), 'backdrop');
+  const x = 14, w = 152, h = 170;
+  panel(x, SET_Y, w, h);
+  text('SETTINGS', 90, SET_Y + 9, { font: 'big', align: 'center', color: C.redD, outline: null });
+  if (app.g && app.g.phase === 'play') text('GAME PAUSED', 90, SET_Y + 20, { align: 'center', color: C.greyD, outline: null });
+  slider('music', 'MUSIC', app.vol.music, SLIDER_ROWS.music);
+  slider('sfx', 'SOUND EFFECTS', app.vol.sfx, SLIDER_ROWS.sfx);
+  const by = SET_Y + 112;
+  button(28, by, 124, 18, app.muted ? 'SOUND: MUTED' : 'SOUND: ON', app.muted ? C.redD : C.steelD, () => app.toggleMute());
+  button(28, by + 26, 124, 18, app.g && app.g.phase === 'play' ? 'RESUME' : 'DONE', C.greenD, () => app.closeSettings());
+}
+
 function wrap(str, maxW) {
   const rows = [];
   let cur = '';
@@ -505,7 +535,7 @@ function introCard(app) {
     drawItem('soda', 30, 112, { scale: 2 }); drawItem('kimbap', 74, 112, { scale: 2 }); drawItem('toast', 118, 112, { scale: 2 });
   } else if (it.station === 'grill') {
     const p = (Math.sin(t * 0.8) * 0.5 + 0.5) * 1.35;
-    drawItem('skewer', 36, 110, { up: p, down: p, scale: 2 }); drawItem('sausage', 92, 110, { up: p * 0.8, down: p * 0.8, scale: 2 });
+    drawItem('galbi', 36, 110, { up: p, down: p, scale: 2 }); drawItem('sausage', 92, 110, { up: p * 0.8, down: p * 0.8, scale: 2 });
     for (let x = 26; x < 154; x += 4) R(x, 148, 3, 4, mix(C.redD, C.orange, Math.sin(t * 5 + x) * 0.5 + 0.5));
   } else {
     drawItem('chicken', 40, 110, { p: 1, scale: 2, sauce: 'yangnyeom' }); drawItem('beer', 92, 110, { scale: 2 });
@@ -548,7 +578,7 @@ function endScreen(app) {
     text(b, 154, y, { color: C.ink, outline: null, align: 'right' });
     R(26, y + 8, 128, 1, C.cream);
   });
-  drawShiba(90, 272, { big: true, mood: ok ? 'happy' : 'wait', t: app.time });
+  drawShiba(90, 270, { big: true, scale: 4, mood: ok ? 'happy' : 'wait', t: app.time });
   const next = LEVELS.find((l) => l.n === g.level + 1);
   button(22, 280, 64, 18, 'RETRY', C.blueD, () => app.newLevel(g.level));
   if (ok && next) button(94, 280, 64, 18, 'NEXT', C.greenD, () => app.newLevel(next.n));
@@ -590,7 +620,8 @@ function titleScreen(app) {
       hit(10, y, 160, 36, () => app.newLevel(L.n));
     } else lockIcon(150, y + 12, C.greyD);
   });
-  text('SWIPE STATIONS. COOK. SERVE.', 90, H - 14, { align: 'center', color: C.grey });
+  text('FOOD ART: AROACHIFOUNDONMYPILLOW (CC0)', 90, H - 22, { align: 'center', color: C.grey });
+  text('PEOPLE: KENNEY.NL (CC0)  SEE CREDITS.MD', 90, H - 13, { align: 'center', color: C.grey });
 }
 
 // ---------- frame ----------
@@ -600,6 +631,7 @@ export function render(app) {
   if (app.screen === 'title') {
     titleScreen(app);
     hud(app);
+    if (app.settings) settingsPanel(app);
     return hits;
   }
   drawMarket(app.time);
@@ -626,7 +658,7 @@ export function render(app) {
   }
   tray(app);
   // held sauce follows the pointer a little above the finger
-  if (g.held && app.pointer) drawBottle(g.held, app.pointer.x - 6, app.pointer.y - 26, false);
+  if (g.held && app.pointer) drawSauce(g.held, Math.round(app.pointer.x) - 16, Math.round(app.pointer.y) - 40, false, 2);
   // toast
   const ts = app.fx.toast;
   if (ts) {
@@ -640,5 +672,6 @@ export function render(app) {
   if (g.phase === 'intro') introCard(app);
   if (g.phase === 'end') endScreen(app);
   drawParts(app.fx, 'top');
+  if (app.settings) settingsPanel(app);
   return hits;
 }

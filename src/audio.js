@@ -1,13 +1,40 @@
 // Tiny WebAudio synth: every sound is made in code, no audio files.
-let ac = null, master = null, noiseBuf = null;
-let muted = false;
+import { createPlayer } from './music.js';
+
+let ac = null, master = null, sfxBus = null, noiseBuf = null, music = null;
+// Volumes are 0..1 from the settings sliders; mute silences everything.
+let muted = false, musicVol = 0.7, sfxVol = 1;
 const last = new Map();
+
+// The music loop runs only while it is wanted, audible and the page is visible.
+function refreshMusic() {
+  if (!music) return;
+  const want = musicVol > 0 && !muted && !document.hidden;
+  if (want && !music.running) music.start();
+  else if (!want && music.running) music.stop();
+}
 
 export function setMuted(m) {
   muted = m;
   if (master) master.gain.value = m ? 0 : 0.5;
+  refreshMusic();
 }
 export const isMuted = () => muted;
+const clamp01 = (v) => Math.max(0, Math.min(1, Number(v) || 0));
+export function setMusicVolume(v) {
+  musicVol = clamp01(v);
+  if (music) music.setVolume(musicVol);
+  refreshMusic();
+}
+export function setSfxVolume(v) {
+  sfxVol = clamp01(v);
+  if (sfxBus) sfxBus.gain.value = sfxVol;
+}
+export const volumes = () => ({ music: musicVol, sfx: sfxVol });
+// A short cheerful flourish at the end of a good level.
+export function sting() {
+  if (ac && music && musicVol > 0 && !muted) { try { music.sting(); } catch { /* best effort */ } }
+}
 
 // Browsers only allow audio after a user gesture; call this from one.
 export function unlock() {
@@ -19,11 +46,21 @@ export function unlock() {
     master = ac.createGain();
     master.gain.value = muted ? 0 : 0.5;
     master.connect(comp); comp.connect(ac.destination);
+    sfxBus = ac.createGain();
+    sfxBus.gain.value = sfxVol;
+    sfxBus.connect(master);
     noiseBuf = ac.createBuffer(1, ac.sampleRate, ac.sampleRate);
     const d = noiseBuf.getChannelData(0);
     for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    music = createPlayer(ac, master, { volume: musicVol });
+    // Pause everything while the tab is hidden; pick up where it was on return.
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) ac.suspend(); else ac.resume();
+      refreshMusic();
+    });
   }
-  if (ac.state === 'suspended') ac.resume();
+  if (ac.state === 'suspended' && !document.hidden) ac.resume();
+  refreshMusic();
 }
 
 function env(g, t0, a, d, v) {
@@ -38,7 +75,7 @@ function tone(f, dur, { type = 'square', vol = 0.15, to = null, at = 0, attack =
   o.frequency.setValueAtTime(f, t0);
   if (to) o.frequency.exponentialRampToValueAtTime(to, t0 + dur);
   env(g, t0, attack, dur, vol);
-  o.connect(g); g.connect(master);
+  o.connect(g); g.connect(sfxBus);
   o.start(t0); o.stop(t0 + attack + dur + 0.05);
 }
 function noise(dur, { type = 'bandpass', f = 2000, to = null, q = 1, vol = 0.2, at = 0, attack = 0.005 } = {}) {
@@ -49,7 +86,7 @@ function noise(dur, { type = 'bandpass', f = 2000, to = null, q = 1, vol = 0.2, 
   fl.type = type; fl.frequency.setValueAtTime(f, t0); fl.Q.value = q;
   if (to) fl.frequency.exponentialRampToValueAtTime(to, t0 + dur);
   env(g, t0, attack, dur, vol);
-  s.connect(fl); fl.connect(g); g.connect(master);
+  s.connect(fl); fl.connect(g); g.connect(sfxBus);
   s.start(t0, Math.random() * 0.5); s.stop(t0 + attack + dur + 0.05);
 }
 
@@ -79,12 +116,16 @@ const SOUNDS = {
   star: () => { tone(1047, 0.06, { vol: 0.07 }); tone(1568, 0.15, { vol: 0.07, at: 0.06 }); },
 };
 
+// Frequent ambient cooking sounds don't duck the music (it would pump).
+const QUIET = new Set(['crackle', 'bubble', 'tap', 'coin']);
+
 // Plays a named sound, at most once per `gap` seconds per name.
 export function play(name, gap = 0.03) {
-  if (!ac || muted || !SOUNDS[name]) return;
+  if (!ac || muted || sfxVol <= 0 || !SOUNDS[name]) return;
   const now = ac.currentTime;
   if (now - (last.get(name) ?? -1) < gap) return;
   last.set(name, now);
+  if (music && !QUIET.has(name)) music.duck();
   try { SOUNDS[name](); } catch { /* audio is best effort */ }
 }
 export const SOUND_NAMES = Object.keys(SOUNDS);

@@ -42,11 +42,11 @@ export function makeOrder(levelN, i, r) {
       if (i >= 4 && r() < 0.35) lines.push(line(pick(r, foods)));
     }
   } else if (levelN === 2) {
-    if (i === 0) lines.push(line('skewer'));
+    if (i === 0) lines.push(line('galbi'));
     else {
-      const grillItem = pick(r, ['skewer', 'sausage']);
+      const grillItem = pick(r, ['galbi', 'sausage']);
       lines.push(line(grillItem, r() < 0.5 ? pick(r, ['spicy', 'honey']) : null));
-      if (i >= 4 && r() < 0.3) lines.push(line(pick(r, ['skewer', 'sausage']), r() < 0.5 ? 'spicy' : null));
+      if (i >= 4 && r() < 0.3) lines.push(line(pick(r, ['galbi', 'sausage']), r() < 0.5 ? 'spicy' : null));
       if (r() < 0.6) lines.push(line(pick(r, drinks)));
     }
   } else {
@@ -58,9 +58,9 @@ export function makeOrder(levelN, i, r) {
     } else if (r() < 0.7) {
       lines.push(line('chicken', r() < 0.7 ? pick(r, ['yangnyeom', 'soygarlic']) : null));
       if (r() < 0.75) lines.push(line(r() < 0.6 ? 'beer' : pick(r, drinks)));
-      if (i >= 4 && r() < 0.3) lines.push(line(pick(r, ['skewer', 'kimbap'])));
+      if (i >= 4 && r() < 0.3) lines.push(line(pick(r, ['galbi', 'kimbap'])));
     } else {
-      lines.push(line(pick(r, ['skewer', 'sausage']), r() < 0.5 ? pick(r, ['spicy', 'honey']) : null));
+      lines.push(line(pick(r, ['galbi', 'sausage']), r() < 0.5 ? pick(r, ['spicy', 'honey']) : null));
       lines.push(line(pick(r, [...drinks, ...foods])));
     }
   }

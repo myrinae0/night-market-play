@@ -1,163 +1,101 @@
 // Code-drawn pixel art: menu items, sauce bottles, customers, the Shiba, icons.
 import { C, R, box, rbox, mix, makeCanvas, getCtx, setCtx } from './gfx.js';
+import { img, tinted, PEOPLE } from './assets.js';
 import { COOK } from './data.js';
 
-// ---------- cooking colours ----------
-function cookColor(raw, cooked, burnt, p, spec) {
-  if (p <= spec.perfectLo) return mix(raw, cooked, Math.pow(p / spec.perfectLo, 1.3));
-  if (p <= spec.perfectHi) return cooked;
-  return mix(cooked, burnt, (p - spec.perfectHi) / (spec.burnt - spec.perfectHi));
-}
+// ---------- menu items ----------
+// Food art is the CC0 "16x16 Food" pack (src/assets.js); drinks the pack has no
+// sprite for (barley tea, beer) are drawn here in the same 16 x 16 style:
+// dark brown outline, two-tone shading, top-left light.
 export const STATE_P = { raw: 0.25, done: 0.95, burnt: 1.45 };
+const OL = '#3a2229'; // the food pack's outline brown
 
-const SAUCE_COL = {
-  spicy: [C.red, C.redL], honey: [C.gold, C.yellow],
-  yangnyeom: ['#d4322c', '#ff6a4a'], soygarlic: ['#7a3d1c', '#b8672e'],
-};
+function teaArt(x, y) {
+  R(x + 10, y, 1, 4, OL); R(x + 11, y, 2, 1, OL); R(x + 10, y + 1, 1, 3, '#e8e0d0'); // straw
+  R(x + 3, y + 3, 10, 1, OL);
+  R(x + 2, y + 4, 12, 1, OL); R(x + 3, y + 4, 10, 1, '#f2efe6');
+  R(x + 3, y + 5, 10, 9, OL); R(x + 4, y + 5, 8, 8, '#b8743a');
+  R(x + 4, y + 5, 8, 2, '#d39a55'); R(x + 5, y + 7, 1, 5, '#d39a55');
+  R(x + 4, y + 9, 8, 2, '#efe2c4'); R(x + 4, y + 10, 8, 1, '#d9c8a4');
+  R(x + 4, y + 13, 8, 1, OL); R(x + 5, y + 14, 6, 1, OL);
+  R(x + 10, y + 6, 1, 6, '#94572b');
+}
+function beerArt(x, y) {
+  R(x + 2, y + 2, 10, 13, OL);
+  R(x + 12, y + 5, 3, 8, OL); R(x + 12, y + 7, 1, 4, '#cfd6dc'); // handle
+  R(x + 2, y + 1, 9, 2, OL); R(x + 3, y + 2, 8, 3, '#fbf6ea'); R(x + 4, y + 1, 2, 1, '#fbf6ea'); R(x + 8, y + 1, 2, 1, '#fbf6ea');
+  R(x + 3, y + 4, 8, 1, '#e6dccb');
+  R(x + 3, y + 5, 8, 9, '#e9a12a'); R(x + 3, y + 5, 8, 2, '#f6c84a');
+  R(x + 4, y + 7, 1, 6, '#f6c84a'); R(x + 10, y + 6, 1, 8, '#c27a1c');
+  R(x + 7, y + 9, 1, 1, '#fbe7a0'); R(x + 6, y + 11, 1, 1, '#fbe7a0');
+}
 
-// ---------- item bodies (16 x 16, drawn at x, y) ----------
-const ITEM_DRAW = {
-  soda(x, y) {
-    R(x + 5, y + 1, 6, 1, C.ink);
-    R(x + 4, y + 2, 8, 13, C.ink);
-    R(x + 5, y + 2, 6, 2, C.grey);
-    R(x + 5, y + 4, 6, 10, C.red);
-    R(x + 5, y + 8, 6, 2, C.white);
-    R(x + 6, y + 5, 1, 8, C.redL);
-    R(x + 7, y + 1, 2, 1, C.grey);
-  },
-  tea(x, y) {
-    R(x + 9, y, 1, 5, C.ink); R(x + 10, y, 1, 1, C.ink); // straw
-    R(x + 3, y + 4, 10, 1, C.ink);
-    R(x + 3, y + 5, 10, 10, C.ink);
-    R(x + 4, y + 5, 8, 1, C.white);
-    R(x + 4, y + 6, 8, 8, '#c98a3a');
-    R(x + 5, y + 14, 6, 1, C.ink);
-    R(x + 4, y + 9, 8, 2, C.cream); // label
-    R(x + 5, y + 7, 1, 6, '#e0b070');
-    R(x + 9, y + 1, 1, 4, C.white);
-  },
-  kimbap(x, y) {
-    R(x + 1, y + 11, 14, 3, C.ink); R(x + 2, y + 11, 12, 2, C.white); // plate
-    for (const [ox, oy] of [[1, 5], [6, 3], [10, 6]]) {
-      R(x + ox, y + oy, 6, 6, C.ink);
-      R(x + ox + 1, y + oy + 1, 4, 4, C.white);
-      R(x + ox + 2, y + oy + 2, 1, 1, C.yellow);
-      R(x + ox + 3, y + oy + 2, 1, 1, C.orange);
-      R(x + ox + 2, y + oy + 3, 1, 1, C.green);
-      R(x + ox + 3, y + oy + 3, 1, 1, C.pinkD);
-    }
-  },
-  toast(x, y) {
-    R(x + 1, y + 3, 14, 11, C.ink);
-    R(x + 2, y + 4, 12, 2, C.woodL); // top bread
-    R(x + 2, y + 6, 12, 1, C.greenL); // cabbage
-    R(x + 2, y + 7, 12, 2, C.yellow); // egg
-    R(x + 2, y + 9, 12, 1, C.orange); // ham
-    R(x + 2, y + 10, 12, 2, C.woodL); // bottom bread
-    R(x + 1, y + 10, 14, 5, C.ink); R(x + 2, y + 11, 12, 3, C.cream); // paper wrap
-    R(x + 3, y + 12, 10, 1, C.red);
-    R(x + 3, y + 4, 4, 1, C.cream);
-  },
-  beer(x, y) {
-    R(x + 2, y + 2, 10, 13, C.ink);
-    R(x + 12, y + 5, 3, 7, C.ink); R(x + 12, y + 7, 1, 3, C.night1); // handle
-    R(x + 3, y + 3, 8, 3, C.white); // foam
-    R(x + 2, y + 1, 4, 2, C.ink); R(x + 3, y + 2, 2, 1, C.white);
-    R(x + 7, y + 1, 4, 2, C.ink); R(x + 8, y + 2, 2, 1, C.white);
-    R(x + 3, y + 6, 8, 8, C.gold);
-    R(x + 4, y + 7, 1, 6, C.yellow);
-    R(x + 8, y + 9, 1, 1, C.yellow); R(x + 6, y + 11, 1, 1, C.yellow);
-  },
-  skewer(x, y, o) {
-    const top = cookColor('#f2a7a0', '#a8582c', '#2a1a1a', o.up, COOK.grill);
-    const bot = cookColor('#f2a7a0', '#a8582c', '#2a1a1a', o.down, COOK.grill);
-    R(x, y + 8, 16, 1, C.woodL); R(x, y + 9, 16, 1, C.woodD); // stick
-    for (const ox of [2, 6.5, 11]) {
-      R(x + ox, y + 5, 4, 7, C.ink);
-      R(x + ox - 1, y + 6, 6, 5, C.ink);
-      R(x + ox, y + 6, 4, 4, top);
-      R(x + ox, y + 10, 4, 1, bot);
-    }
-    R(x + 5.5, y + 7, 1, 3, C.greenL); R(x + 10, y + 7, 1, 3, C.greenL); // scallion
-    if (o.up > 0.6) for (const ox of [3, 7.5, 12]) R(x + ox, y + 7, 2, 1, mix(top, C.ink, 0.45)); // grill marks
-  },
-  sausage(x, y, o) {
-    const top = cookColor('#f08a8a', '#b4442c', '#2a1a1a', o.up, COOK.grill);
-    const bot = cookColor('#f08a8a', '#b4442c', '#2a1a1a', o.down, COOK.grill);
-    R(x, y + 8, 3, 2, C.woodL);
-    R(x + 2, y + 5, 13, 7, C.ink);
-    R(x + 3, y + 4, 11, 9, C.ink);
-    R(x + 3, y + 5, 11, 5, top);
-    R(x + 3, y + 10, 11, 2, bot);
-    R(x + 4, y + 6, 6, 1, mix(top, C.white, 0.35));
-    if (o.up > 0.6) for (const ox of [5, 8, 11]) R(x + ox, y + 7, 1, 2, mix(top, C.ink, 0.5));
-  },
-  chicken(x, y, o) {
-    const col = o.raw ? '#f2b0a8' : cookColor('#f3e1b0', '#d9902e', '#3a2014', o.up, COOK.fry);
-    const hi = mix(col, C.white, 0.35), lo = mix(col, C.ink, 0.35);
-    for (const [ox, oy, w, h] of [[1, 6, 8, 7], [7, 4, 8, 8], [4, 9, 8, 6]]) {
-      R(x + ox, y + oy + 1, w, h - 2, C.ink);
-      R(x + ox + 1, y + oy, w - 2, h, C.ink);
-      R(x + ox + 1, y + oy + 1, w - 2, h - 2, col);
-      R(x + ox + 1, y + oy + h - 2, w - 2, 1, lo);
-      R(x + ox + 2, y + oy + 1, 2, 1, hi);
-      if (!o.raw) R(x + ox + w - 3, y + oy + 3, 1, 1, lo); // crunchy bits
-    }
-  },
-};
+function cookTint(p, spec, mode) {
+  if (p < spec.perfectLo) return { mode, a: (1 - p / spec.perfectLo) * 0.8 };
+  if (p > spec.perfectHi) return { mode: 'burnt', a: Math.min(0.85, ((p - spec.perfectHi) / (spec.burnt - spec.perfectHi)) * 0.6) };
+  return { mode: null, a: 0 };
+}
 
-function drawSauce(id, sauce, x, y) {
-  const [a, b] = SAUCE_COL[sauce];
+// The image to draw for a menu item at a cooking stage.
+// opts: up (grill, the side you see), p (fryer), cook (tray state), raw (uncooked chicken), batter.
+export function itemImage(id, opts = {}) {
+  let p = opts.up ?? opts.p ?? STATE_P[opts.cook] ?? 0.95;
+  if (id === 'galbi') {
+    if (p < 0.45) return img('galbi_raw');
+    const t = cookTint(p, COOK.grill, 'raw');
+    return t.mode ? tinted('galbi', t.mode, t.mode === 'raw' ? t.a * 0.6 : t.a) : img('galbi');
+  }
+  if (id === 'sausage') {
+    const t = cookTint(p, COOK.grill, 'raw');
+    return t.mode ? tinted('sausage', t.mode, t.a) : img('sausage');
+  }
   if (id === 'chicken') {
-    for (const [ox, oy, w] of [[2, 7, 6], [8, 5, 6], [5, 10, 6]]) {
-      R(x + ox, y + oy, w, 2, a);
-      R(x + ox + 1, y + oy, 2, 1, b);
-    }
-    // sesame seeds
-    for (const [ox, oy] of [[4, 8], [10, 6], [7, 11], [12, 9]]) R(x + ox, y + oy, 1, 1, C.white);
-  } else {
-    R(x + 2, y + 6, 13, 1, a);
-    R(x + 3, y + 7, 2, 1, b); R(x + 8, y + 7, 2, 1, b); R(x + 12, y + 7, 2, 1, b);
-    if (sauce === 'spicy') { R(x + 5, y + 5, 1, 1, C.greenL); R(x + 11, y + 5, 1, 1, C.greenL); }
+    if (opts.raw) return img('chicken_raw');
+    const t = cookTint(p, COOK.fry, 'batter');
+    return t.mode ? tinted('chicken', t.mode, t.a) : img('chicken');
   }
+  return img(id);
 }
 
-const itemCache = new Map();
-// Draws a menu item. opts: up/down (grill progress per side), p (fry), cook
-// ('raw'|'done'|'burnt' for tray items), sauce, raw (uncooked chicken), scale.
+// Draws a menu item at integer (x, y) and whole-number scale. A sauce shows as a
+// small badge (the sauce's ingredient sprite) in the bottom-right corner.
 export function drawItem(id, x, y, opts = {}) {
-  const scale = opts.scale || 1;
-  let up = opts.up, down = opts.down;
-  if (up == null) up = opts.p ?? STATE_P[opts.cook] ?? 0.95;
-  if (down == null) down = up;
-  const q = (v) => Math.round(v * 20) / 20;
-  const key = `${id}|${q(up)}|${q(down)}|${opts.sauce || ''}|${opts.raw ? 1 : 0}`;
-  let cv = itemCache.get(key);
-  if (!cv) {
-    cv = makeCanvas(16, 16);
-    const prev = getCtx();
-    setCtx(cv.getContext('2d'));
-    ITEM_DRAW[id](0, 0, { up: q(up), down: q(down), raw: opts.raw });
-    if (opts.sauce) drawSauce(id, opts.sauce, 0, 0);
-    setCtx(prev);
-    if (itemCache.size > 600) itemCache.clear();
-    itemCache.set(key, cv);
+  const s = opts.scale || 1;
+  x = Math.round(x); y = Math.round(y);
+  const ctx = getCtx();
+  if (id === 'tea' || id === 'beer') {
+    if (s === 1) (id === 'tea' ? teaArt : beerArt)(x, y);
+    else {
+      const cv = drinkCanvas(id);
+      ctx.drawImage(cv, x, y, 16 * s, 16 * s);
+    }
+  } else {
+    const im = itemImage(id, opts);
+    if (im) ctx.drawImage(im, x, y, 16 * s, 16 * s);
   }
-  getCtx().drawImage(cv, Math.round(x), Math.round(y), 16 * scale, 16 * scale);
+  // Sauce badge: the sauce's own sprite at 1x, tucked into the corner of 2x food.
+  if (opts.sauce && s >= 2 && img(opts.sauce)) ctx.drawImage(img(opts.sauce), x + 16 * s - 14, y + 16 * s - 14);
 }
-
-// ---------- sauce bottles (12 x 20) ----------
-export function drawBottle(sauce, x, y, lifted = false) {
-  const [a, b] = SAUCE_COL[sauce];
-  if (lifted) y -= 3;
-  R(x + 5, y, 2, 3, C.ink); R(x + 4, y + 2, 4, 3, C.ink); R(x + 5, y + 3, 2, 1, C.white);
-  R(x + 1, y + 5, 10, 15, C.ink);
-  R(x + 2, y + 6, 8, 13, a);
-  R(x + 3, y + 7, 1, 10, b);
-  R(x + 2, y + 10, 8, 5, C.cream);
-  R(x + 4, y + 12, 4, 1, a);
+const drinkCache = new Map();
+function drinkCanvas(id) {
+  let cv = drinkCache.get(id);
+  if (cv) return cv;
+  cv = makeCanvas(16, 16);
+  const prev = getCtx();
+  setCtx(cv.getContext('2d'));
+  (id === 'tea' ? teaArt : beerArt)(0, 0);
+  setCtx(prev);
+  drinkCache.set(id, cv);
+  return cv;
 }
+// Sauce on the shelf: the ingredient sprite (16 x 16) on a little dish.
+export function drawSauce(sauce, x, y, lifted = false, scale = 1) {
+  x = Math.round(x); y = Math.round(y) - (lifted ? 3 : 0);
+  const im = img(sauce);
+  if (im) getCtx().drawImage(im, x, y, 16 * scale, 16 * scale);
+}
+// Kept for the held-bottle cursor: the sauce sprite at 1x.
+export function drawBottle(sauce, x, y, lifted = false) { drawSauce(sauce, x, y, lifted); }
 
 // ---------- small icons ----------
 export function coinIcon(x, y) {
@@ -173,6 +111,11 @@ export function speakerIcon(x, y, muted) {
   if (muted) { for (let i = 0; i < 4; i++) { R(x + 6 + i, y + 3 + i, 1, 1, C.red); R(x + 9 - i, y + 3 + i, 1, 1, C.red); } }
   else { R(x + 6, y + 3, 1, 4, C.white); R(x + 8, y + 2, 1, 6, C.white); }
 }
+// A small cog for the settings button.
+export function gearIcon(x, y, col = C.white) {
+  const rows = ['..#.#..', '.#####.', '###.###', '##...##', '###.###', '.#####.', '..#.#..'];
+  rows.forEach((r, j) => { for (let i = 0; i < 7; i++) if (r[i] === '#') R(x + i, y + j, 1, 1, col); });
+}
 export function starIcon(x, y, filled, s = 1) {
   const rows = ['....#....', '...###...', '...###...', '#########', '.#######.', '..#####..', '..##.##..', '.##...##.', '.#.....#.'];
   const fill = filled ? C.gold : C.greyDD, hi = filled ? C.yellow : C.greyD;
@@ -186,84 +129,69 @@ export function heartIcon(x, y, col = C.red) {
 }
 
 // ---------- customers ----------
-const SKIN = ['#f3c7a0', '#e0a77a', '#c18256', '#8d5a3c'];
-const HAIR = ['#1a1020', '#5a3220', '#2a2440', '#d77a76', '#9aa3b5', '#7a4a1a'];
-const SHIRT = ['#0099db', '#3e8948', '#8b4a9c', '#f77622', '#e43b44', '#2ce8f5', '#feae34'];
-
-// Draws a customer whose shoulders sit on baseline y (the counter top), centred on cx.
+// People are Kenney's RPG Urban Pack characters (front-facing frame) at 4x.
+export let CUSTOMER_SCALE = 4;
+export function setCustomerScale(n) { CUSTOMER_SCALE = n; }
 export function drawCustomer(look, cx, y, { mood = 'wait', t = 0, low = false } = {}) {
-  if (look === 'shiba') return drawShiba(cx, y, { big: true, mood, t });
-  const skin = SKIN[look % 4], hair = HAIR[(look * 5 + 1) % HAIR.length], shirt = SHIRT[(look * 3 + 2) % SHIRT.length];
-  const bob = mood === 'happy' ? -Math.abs(Math.round(Math.sin(t * 12) * 2)) : Math.round(Math.sin(t * 2.2) * 0.6);
-  const x = cx - 16, top = y - 56 + bob;
-  // body
-  R(x + 2, top + 32, 28, 26, C.ink);
-  R(x + 3, top + 33, 26, 25, shirt);
-  R(x + 12, top + 33, 8, 3, mix(shirt, C.ink, 0.3));
-  R(x + 4, top + 36, 2, 20, mix(shirt, C.white, 0.2));
-  // neck + head
-  R(x + 12, top + 28, 8, 6, C.ink); R(x + 13, top + 29, 6, 5, mix(skin, C.ink, 0.15));
-  R(x + 5, top + 6, 22, 24, C.ink);
-  R(x + 6, top + 7, 20, 22, skin);
-  R(x + 4, top + 15, 2, 6, C.ink); R(x + 26, top + 15, 2, 6, C.ink); // ears
-  // hair styles
-  const style = look % 3;
-  R(x + 5, top + 4, 22, 7, C.ink);
-  R(x + 6, top + 5, 20, 5, hair);
-  if (style === 0) { R(x + 6, top + 10, 4, 6, hair); R(x + 22, top + 10, 4, 4, hair); }
-  if (style === 1) { R(x + 11, top, 10, 6, C.ink); R(x + 12, top + 1, 8, 4, hair); R(x + 6, top + 10, 20, 2, hair); }
-  if (style === 2) { R(x + 4, top + 2, 24, 4, C.ink); R(x + 5, top + 3, 22, 2, SHIRT[(look + 4) % SHIRT.length]); R(x + 22, top + 5, 9, 3, C.ink); } // cap
-  // face
-  const ey = top + 16;
-  if (mood === 'happy') {
-    R(x + 10, ey, 3, 1, C.ink); R(x + 9, ey + 1, 1, 1, C.ink); R(x + 13, ey + 1, 1, 1, C.ink);
-    R(x + 19, ey, 3, 1, C.ink); R(x + 18, ey + 1, 1, 1, C.ink); R(x + 22, ey + 1, 1, 1, C.ink);
-    R(x + 12, ey + 6, 8, 3, C.ink); R(x + 13, ey + 7, 6, 1, C.red);
-  } else {
-    const blink = Math.sin(t * 1.7 + look) > 0.97;
-    if (blink) { R(x + 10, ey + 1, 3, 1, C.ink); R(x + 19, ey + 1, 3, 1, C.ink); }
-    else { R(x + 10, ey, 3, 3, C.ink); R(x + 19, ey, 3, 3, C.ink); R(x + 11, ey, 1, 1, C.white); R(x + 20, ey, 1, 1, C.white); }
-    if (mood === 'angry') {
-      R(x + 9, ey - 3, 4, 1, C.ink); R(x + 12, ey - 2, 1, 1, C.ink);
-      R(x + 19, ey - 3, 4, 1, C.ink); R(x + 19, ey - 2, 1, 1, C.ink);
-      R(x + 13, ey + 7, 6, 1, C.ink); R(x + 12, ey + 8, 1, 1, C.ink); R(x + 19, ey + 8, 1, 1, C.ink);
-    } else if (mood === 'meh') R(x + 13, ey + 7, 6, 1, C.ink);
-    else { R(x + 14, ey + 7, 4, 1, C.ink); }
-  }
-  R(x + 7, ey + 4, 3, 2, mix(skin, C.red, 0.35)); R(x + 22, ey + 4, 3, 2, mix(skin, C.red, 0.35));
-  if (low && mood !== 'happy') { R(x + 25, top + 9, 2, 3, C.teal); R(x + 24, top + 11, 4, 2, C.teal); } // sweat
-  if (look === 4) { R(x + 8, ey - 1, 7, 5, C.ink); R(x + 9, ey, 5, 3, '#4a5a7a'); R(x + 17, ey - 1, 7, 5, C.ink); R(x + 18, ey, 5, 3, '#4a5a7a'); R(x + 15, ey + 1, 2, 1, C.ink); } // glasses
+  if (look === 'shiba') return drawShiba(cx, y + 2, { big: true, mood, t, scale: CUSTOMER_SCALE - 1 });
+  const s = CUSTOMER_SCALE;
+  const p = PEOPLE[look % PEOPLE.length];
+  const hop = mood === 'happy' ? Math.abs(Math.round(Math.sin(t * 10) * 2)) * s / 2 : 0;
+  const x = Math.round(cx - 8 * s), top = Math.round(y - 15 * s - hop);
+  const im = img('urban');
+  if (im) getCtx().drawImage(im, p.sx, p.sy, 16, 16, x, top, 16 * s, 16 * s);
+  // mood marks, drawn on the same 4 px grid as the sprite
+  const P = (px, py, c) => R(x + px * s, top + py * s, s, s, c);
+  if (mood === 'angry') { P(13, 0, C.red); P(14, 1, C.red); P(15, 0, C.red); P(13, 2, C.red); P(15, 2, C.red); }
+  else if (low && mood !== 'happy') { P(14, 1, C.teal); P(14, 2, C.teal); P(13, 2, C.teal); P(15, 2, C.teal); P(14, 3, C.teal); }
 }
 
-// The Shiba. Small (stall mascot, ~26 px tall) or big (as a customer).
-export function drawShiba(cx, y, { big = false, mood = 'wait', t = 0 } = {}) {
-  const s = big ? 2 : 1;
-  const O = '#e08a3c', OD = '#b8642a', Wt = '#fff3e0';
-  const bob = mood === 'happy' ? -Math.abs(Math.round(Math.sin(t * 12) * 2)) : 0;
-  const x = cx - 12 * s, top = y - 26 * s + bob;
-  const P = (px, py, w, h, c) => R(x + px * s, top + py * s, w * s, h * s, c);
-  // tail (curled, wagging)
-  const wag = Math.round(Math.sin(t * (mood === 'happy' ? 18 : 6)));
-  P(19 + wag, 14, 5, 5, C.ink); P(20 + wag, 15, 3, 3, O); P(21 + wag, 16, 1, 1, Wt);
-  // body
-  P(5, 15, 15, 12, C.ink); P(6, 16, 13, 11, O); P(9, 17, 7, 10, Wt);
-  // head
-  P(3, 3, 18, 14, C.ink); P(4, 4, 16, 12, O);
-  // ears
-  P(4, 0, 5, 5, C.ink); P(5, 1, 3, 3, O); P(6, 2, 1, 2, C.pink);
-  P(15, 0, 5, 5, C.ink); P(16, 1, 3, 3, O); P(17, 2, 1, 2, C.pink);
-  // cheeks and muzzle
-  P(4, 10, 16, 6, Wt); P(5, 9, 4, 2, Wt); P(15, 9, 4, 2, Wt);
-  P(3, 10, 1, 6, C.ink); P(20, 10, 1, 6, C.ink); P(4, 16, 16, 1, C.ink);
-  P(7, 6, 2, 1, Wt); P(15, 6, 2, 1, Wt); // eyebrow dots
-  const blink = Math.sin(t * 1.3) > 0.96;
-  if (mood === 'happy' || blink) { P(7, 8, 3, 1, C.ink); P(14, 8, 3, 1, C.ink); }
-  else { P(7, 7, 2, 2, C.ink); P(15, 7, 2, 2, C.ink); }
-  P(11, 10, 2, 1, C.ink); // nose
-  if (mood === 'happy') { P(10, 12, 4, 2, C.ink); P(11, 13, 2, 1, C.red); }
-  else { P(10, 12, 1, 1, C.ink); P(13, 12, 1, 1, C.ink); P(11, 13, 2, 1, C.ink); }
-  P(5, 11, 2, 1, C.pink); P(17, 11, 2, 1, C.pink);
-  // collar
-  P(6, 16, 13, 2, C.red); P(12, 17, 2, 2, C.gold);
-  P(6, 26, 4, 1, OD); P(15, 26, 4, 1, OD);
+// Chimaek the Shiba: a 16 x 16 sprite drawn for this game in the same style as
+// the Kenney people (dark outline, flat two-tone colours), shown at 2x like them.
+const SHIBA = [
+  '..kk........kk..',
+  '.kook......kook.',
+  '.kopokkkkkkopok.',
+  '.kooooooooooook.',
+  'kooooooooooooook',
+  'kooowoooooowoook',
+  'koooeooooooeoook',
+  'kowwwwwnnwwwwwok',
+  'kwwpwwwkkwwwpwwk',
+  '.kwwwwwwwwwwwwk.',
+  '..krrrrryrrrrk..',
+  '..koowwwwwwook..',
+  '..koowwwwwwookok',
+  '..koowwwwwwooook',
+  '..koowwkkwwookk.',
+  '..kkkkkkkkkkkk..',
+].map((r) => r.slice(0, 16).padEnd(16, '.'));
+const SHIBA_PAL = { k: OL, o: '#e0873a', p: '#f2a0a0', w: '#fbf1e0', e: '#1c1418', n: '#1c1418', r: '#d8333f', y: '#f6c84a' };
+const shibaCache = new Map();
+function shibaCanvas(happy) {
+  const key = happy ? 'h' : 'n';
+  let cv = shibaCache.get(key);
+  if (cv) return cv;
+  cv = makeCanvas(16, 16);
+  const cx = cv.getContext('2d');
+  SHIBA.forEach((row, j) => {
+    for (let i = 0; i < 16; i++) {
+      let ch = row[i];
+      if (happy && ch === 'e') ch = 'k';
+      if (happy && j === 8 && (i === 7 || i === 8)) ch = 'p';
+      if (!SHIBA_PAL[ch]) continue;
+      cx.fillStyle = SHIBA_PAL[ch];
+      cx.fillRect(i, j, 1, 1);
+    }
+  });
+  shibaCache.set(key, cv);
+  return cv;
+}
+export function drawShiba(cx, y, { big = false, mood = 'wait', t = 0, scale = 2 } = {}) {
+  const s = big ? Math.max(scale, 2) : scale;
+  const hop = mood === 'happy' ? Math.abs(Math.round(Math.sin(t * 10) * 2)) * s / 2 : 0;
+  const x = Math.round(cx - 8 * s), top = Math.round(y - 16 * s - hop);
+  getCtx().drawImage(shibaCanvas(mood === 'happy'), x, top, 16 * s, 16 * s);
+  // tail wag: one pixel
+  if (Math.sin(t * 6) > 0) R(x + 15 * s, top + 11 * s, s, s, SHIBA_PAL.o);
 }
