@@ -5,7 +5,7 @@ import { LEVELS, COOK, ITEMS, SHOP_FROM_LEVEL } from './data.js';
 import { grillState, fryState, levelDef, buyUpgrade, upgradeById, nightPay, scoreServe, potBoiling, isUnlocked } from './logic.js';
 import * as G from './game.js';
 import { boxGeom, COUNTER_Y, tapMode, guestX, grillSlotX, basketX, WOK_CX, steamX, POT_CX } from './render.js';
-import { drawFrame, lineTyped, choicesH, choiceBox, dlgLineH, defaultTitlePage, TITLE_PAGES, logPages } from './screens.js';
+import { drawFrame, lineTyped, choiceBox, defaultTitlePage, TITLE_PAGES, logPages } from './screens.js';
 import { computeView, setLayout, LAY } from './layout.js';
 import { designToScreen } from './ui.js';
 import { createFx, updateFx, spawn, floatText, coinBurst, bounce, toast } from './fx.js';
@@ -197,7 +197,7 @@ const app = {
   playAfter(sc) { app.startDialogue(sc, false, () => { app.toTitle(); app.titlePage = defaultTitlePage(save.stars); }); },
   startDialogue(sc, replay, then) {
     app.dlg = startScene(sc, save.story, { replay });
-    app.dlgT = 0; app.dlgThen = then; app.dlgH = 0; app.dlgCH = 0;
+    app.dlgT = 0; app.dlgThen = then;
     app.screen = 'scene'; app.g = null;
     audio.setRain(!!levelDef(sc.level)?.rain);
   },
@@ -363,14 +363,7 @@ function ambient(dt) {
 
 function step(dt) {
   app.time += dt;
-  if (app.screen === 'scene') {
-    app.dlgT += dt;
-    const want = app.dlg ? dlgLineH(app.dlg.cur) : 0; // the dialogue box eases to fit the line
-    app.dlgH = app.dlgH ? app.dlgH + (want - app.dlgH) * Math.min(1, dt * 18) : want;
-    const wantC = choicesH(app.dlg, lineTyped(app)); // room for the answers opens under the box
-    app.dlgCH = (app.dlgCH || 0) + (wantC - (app.dlgCH || 0)) * Math.min(1, dt * 18);
-    if (Math.abs(wantC - app.dlgCH) < 0.5) app.dlgCH = wantC;
-  }
+  if (app.screen === 'scene') app.dlgT += dt;
   if (app.g) {
     G.update(app.g, dt);
     ambient(dt);

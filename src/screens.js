@@ -33,7 +33,7 @@ export const shopOpen = (save) => (save.stars[SHOP_FROM_LEVEL] || 0) >= 1;
 // Levels come in pages (part 1, part 2); PART tabs, a swipe or the arrow keys
 // switch. Each card shows the level, its title, what is new and its stars.
 export const TITLE_PAGES = [[1, 2, 3, 4, 5, 6], [7, 8, 9, 10, 11, 12, 13, 99]];
-export const titleCard = (k) => ({ x: 6 + (k % 2) * 86, y: SCENE_H + 21 + Math.floor(k / 2) * 41, w: 82, h: 38 });
+export const titleCard = (k, pitch = 41) => ({ x: 6 + (k % 2) * 86, y: SCENE_H + 21 + Math.floor(k / 2) * pitch, w: 82, h: 38 });
 export function defaultTitlePage(stars) {
   const top = Math.max(...LEVELS.filter((L) => isUnlocked(L.n, stars)).map((L) => L.n));
   return Math.max(0, TITLE_PAGES.findIndex((pg) => pg.includes(top)));
@@ -44,26 +44,36 @@ export function levelTag(L) {
   if (L.kind === 'queue') return '3 GUESTS AT ONCE';
   return `+ ${STATIONS[L.stations[L.stations.length - 1]].name.toUpperCase()}`;
 }
-// Portrait: the street on top (it gets the extra height), the level cards on
-// the wood floor below. Wide: the street on the left, the cards on the right.
+// Portrait: the street on top, the level cards on the wood floor below. The
+// street gets no more extra height than on the game screen; the floor takes
+// the rest, spacing the card rows out. Wide: the street on the left with the
+// counter a little below the middle and the stall's menu board under it, the
+// cards on the right.
 export function titleLayout(W, H, mode) {
   if (mode === 'wide') {
     const RW = wideRight(W), LW = W - RW;
-    const S = { w: W, h: H, cy: H - 18, d: Math.floor((LW - 180) / 2), sw: LW };
+    const cy = Math.min(H - 18, 14 + Math.max(126, Math.round((H - 14) * 0.52)));
+    const S = { w: LW, h: H, cy, d: Math.floor((LW - 180) / 2), sw: LW };
     const floor = { x: LW, y: 14, w: RW, h: H - 14 };
-    return { S, floor, cards: centerBlock(SCENE_H, 390, floor) };
+    const pitch = 41 + Math.max(0, Math.min(12, Math.floor((floor.h - 232) / 8)));
+    return { S, floor, pitch, cards: centerBlock(SCENE_H, 390 + 4 * (pitch - 41), floor), board: { top: cy + 18, h: H - cy - 18 } };
   }
-  const sh = H - (390 - SCENE_H);
+  const sh = computeLayout(W, H, 'portrait').scene.cy + 18;
   const S = { w: W, h: sh, cy: sh - 18, d: Math.floor((W - 180) / 2), sw: W };
   const floor = { x: 0, y: sh, w: W, h: H - sh };
-  return { S, floor, cards: centerBlock(SCENE_H, 390, floor) };
+  const pitch = 41 + Math.max(0, Math.min(12, Math.floor((floor.h - 232) / 5)));
+  return { S, floor, pitch, cards: centerBlock(SCENE_H, 390 + 4 * (pitch - 41), floor), board: null };
 }
 function titleScreen(app) {
   const t = app.time;
-  const { S, floor, cards } = titleLayout(W, H, LAY.mode);
+  const { S, floor, cards, pitch, board } = titleLayout(W, H, LAY.mode);
   drawMarket(t, { festival: isUnlocked(13, app.save.stars) }, S);
   inScene(() => drawCustomer('lantern', 52, COUNTER_Y + 2, { t }), S);
-  awningAndCounter(t, { react: 'wag' }, S);
+  awningAndCounter(t, { react: 'wag' }, S, LAY.mode === 'wide' ? S.h : S.cy + 18);
+  if (board) { // tonight's menu: the newest night you can play
+    const n = Math.max(...LEVELS.filter((L) => isUnlocked(L.n, app.save.stars)).map((L) => L.n));
+    stallFront(S, { level: n, def: levelDef(n), time: t }, board);
+  }
   // The sign floats in the sky, halfway between the awning and the guest.
   withOrigin(S.d, Math.floor((S.cy - COUNTER_Y) / 2), () => {
     rbox(84, 32, 92, 46, C.ink);
@@ -77,9 +87,10 @@ function titleScreen(app) {
     text(String(app.save.wallet), 122, 88, { color: C.yellow });
   }, [80, 26, 180, 100]);
   woodFloor(floor.y, floor.x, floor.w);
-  withOrigin(cards.dx, cards.dy, () => titleCards(app), [0, SCENE_H, 180, 390]);
+  if (LAY.mode === 'wide') { R(floor.x - 3, 14, 3, H - 14, C.woodD); R(floor.x - 2, 14, 1, H - 14, C.wood); R(floor.x - 4, 14, 1, H - 14, C.ink); }
+  withOrigin(cards.dx, cards.dy, () => titleCards(app, pitch), [0, SCENE_H, 180, 390 + 4 * (pitch - 41)]);
 }
-function titleCards(app) {
+function titleCards(app, pitch = 41) {
   const page = app.titlePage || 0;
   ['PART 1', 'PART 2'].forEach((lab, i) => {
     const on = page === i;
@@ -88,7 +99,8 @@ function titleCards(app) {
   });
   TITLE_PAGES[page].forEach((n, k) => {
     const L = levelDef(n);
-    const { x, y, w, h } = titleCard(k);
+    const c = titleCard(k, pitch), { x, w, h } = c;
+    const y = c.y + Math.floor(((4 - Math.ceil(TITLE_PAGES[page].length / 2)) * pitch) / 2); // fewer rows: centred in the four rows' space
     const open = isUnlocked(L.n, app.save.stars);
     rbox(x, y + 1, w, h, C.ink);
     if (L.endless) { // endless nights: the best night so far
@@ -113,7 +125,7 @@ function titleCards(app) {
       hit(x, y, w, h, () => app.playLevel(L.n), 'ui', `level:${L.n}`);
     } else lockIcon(x + w - 14, y + 4, C.greyD);
   });
-  const by = SCENE_H + 21 + 4 * 41;
+  const by = SCENE_H + 21 + 4 * pitch;
   button(6, by, 82, 16, 'STORY', C.purple, () => app.openLog(), 'ui', 'small', 'story');
   if (shopOpen(app.save)) button(92, by, 82, 16, 'SHOP', C.greenD, () => app.openShop(null), 'ui', 'small', 'shop');
   else {
@@ -121,8 +133,8 @@ function titleCards(app) {
     lockIcon(98, by + 3, C.greyD);
     text(`SHOP: LEVEL ${SHOP_FROM_LEVEL}`, 136, by + 6, { color: C.greyD, align: 'center' });
   }
-  text('ART: AROACHIFOUNDONMYPILLOW, KENNEY', 90, 390 - 14, { align: 'center', color: C.grey });
-  text('(CC0) AND CODE. SEE CREDITS.MD', 90, 390 - 7, { align: 'center', color: C.grey });
+  text('ART: AROACHIFOUNDONMYPILLOW, KENNEY', 90, by + 33, { align: 'center', color: C.grey });
+  text('(CC0) AND CODE. SEE CREDITS.MD', 90, by + 40, { align: 'center', color: C.grey });
 }
 
 // ---------- story scene ----------
@@ -134,17 +146,18 @@ export function lineTyped(app) { return Math.floor(app.dlgT * TYPE_RATE) >= line
 // between sizes, and the counter rides just above it (portrait), so the
 // street always fills the rest. Wide screens: the spirit at the counter on the
 // left, the box on the right. DLG is where the box is now.
-export const DLG = { x: 4, y: 164, w: 172 };
+export const DLG = { x: 4, y: 164, w: 172, h: 160, big: false };
 const TEXT_W = DLG.w - 14;
 const HEAD_H = 46; // the portrait and name above a spirit's line
 export const dlgLineH = (step) => (!step ? 40 : (step.who === 'STORY' ? 8 : HEAD_H) + wrap(step.text, TEXT_W, 'big').length * 10 + 16);
 export const CHOICE_H = 18, CHOICE_GAP = 22;
-// How much the answers add under the box (0 while there are none).
-export const choicesH = (d, typed) => (d && d.choice && typed ? d.choice.length * CHOICE_GAP + 6 : 0);
 // Where answer k sits (the playtest taps these).
+// They sit at the bottom of the dialogue window (DLG.h tall).
 export function choiceBox(d, k) {
-  return { x: DLG.x + 4, y: DLG.y + dlgLineH(d.cur) + 10 + k * CHOICE_GAP, w: DLG.w - 8, h: CHOICE_H };
+  const n = d.choice ? d.choice.length : 0;
+  return { x: DLG.x + 4, y: DLG.y + DLG.h - 6 - n * CHOICE_GAP + 4 + k * CHOICE_GAP, w: DLG.w - 8, h: CHOICE_H };
 }
+const RULE = '#dfe4ee', MARGIN = '#f2c2bd'; // the notebook page's lines
 // A speaker who is not a spirit (the cold voice in the night 13 epilogue).
 const VOICE = { VOICE: { name: '???', kind: 'A COLD VOICE' } };
 
@@ -169,70 +182,90 @@ export function sceneBlockH(sc) {
   blockCache.set(sc.id, h);
   return h;
 }
-// Where things go in a story scene: the street S, the dialogue box's top-left
-// (box) and the note at the bottom (note: centre x, y). `now` is the box and
-// answers' height on screen, `blockH` the scene's tallest (sceneBlockH).
-export function sceneLayout(W, H, mode, blockH, now = blockH) {
+// A story scene is a street with the spirit at the counter and a dialogue
+// window that keeps one size for the whole scene (its tallest line plus its
+// answers fit), so nothing moves from line to line.
+//   Portrait: the window sits at the bottom, just above the note, with a strip
+//   of counter above it; the street fills the rest (the spirit drawn bigger
+//   when there is room).
+//   Wide: the street on the left with the counter a little below the middle
+//   and the stall's menu board under it (as in the game); on the right, the
+//   window on the wood wall, with a big close-up of whoever speaks.
+// Returns the street S, the spirit's scale, the window (box: x, y, h, big
+// header or not), the note (centre x, y), the wall (wide) and the board area.
+export const BIG_HEAD = 58; // how much taller the close-up header is
+export function sceneLayout(W, H, mode, blockH) {
+  const winH0 = blockH + 8;
   if (mode === 'wide') {
-    // The spirit, drawn big, at the counter on the left; the box and its
-    // answers in the middle of the right column.
     const RW = wideRight(W), LW = W - RW;
-    const S = { w: W, h: H, cy: H - 18, d: Math.floor((LW - 180) / 2), sw: LW };
-    const scale = Math.max(4, Math.min(7, Math.floor((S.cy - 50) / 16)));
-    const top = 36, room = H - 20 - top;
-    return { S, scale, board: null, box: { x: LW + Math.floor((RW - DLG.w) / 2), y: top + Math.max(0, Math.floor((room - blockH) / 2)) }, note: { x: LW + Math.floor(RW / 2), y: H - 14 } };
+    const cy = Math.min(H - 18, 14 + Math.max(126, Math.round((H - 14) * 0.52)));
+    const S = { w: LW, h: H, cy, d: Math.floor((LW - 180) / 2), sw: LW };
+    const scale = Math.max(4, Math.min(7, Math.floor((cy - 44) / 16)));
+    const room = H - 36 - 22;
+    const big = room >= winH0 + BIG_HEAD;
+    const h = Math.min(room, winH0 + (big ? BIG_HEAD : 0) + 16);
+    const box = { x: LW + Math.floor((RW - DLG.w) / 2), y: 36 + Math.floor((room - h) / 2), h, big };
+    return { S, scale, box, note: { x: LW + Math.floor(RW / 2), y: H - 14 }, wall: { x: LW, y: 14, w: RW, h: H - 14 }, board: { top: cy + 18, h: H - cy - 18 } };
   }
-  // Portrait: the box and its answers sit low with the counter riding just
-  // above them, the spirit drawn bigger when there is room. The sky gets no
-  // more than on the game screen (plus the spirit's extra height); what is left
-  // goes to the stall's front at the bottom, with its menu board.
-  const cy0 = H - 20 - blockH - 26; // the counter over the scene's tallest box
-  const gameCy = computeLayout(W, H, 'portrait').scene.cy;
-  const scale = Math.max(4, Math.min(6, Math.floor((Math.min(cy0, gameCy + 32) - 44) / 16)));
-  const cyCap = Math.max(140, Math.min(cy0, gameCy + 16 * (scale - 4)));
-  let boardH = Math.max(0, H - 20 - (cyCap + 26 + blockH));
-  if (boardH < 44) boardH = 0; // too short for the board: the street keeps it
-  // With a board the counter stays put (a short line leaves a little more of the
-  // stall's front showing); without one it rides just above the box.
-  const y = boardH ? cyCap + 26 : Math.max(126, Math.round(H - 20 - now));
-  const cy = y - 26;
+  const h = Math.max(winH0, Math.round((H - 34) * 0.36)); // at least about a third of a tall screen
+  const y = Math.max(164, H - 20 - h);
+  const cy = y - 24;
   const S = { w: W, h: H, cy, d: Math.floor((W - 180) / 2), sw: W };
-  // the board sits in the middle of what the box and answers leave free
-  const board = boardH ? { top: y + Math.round(now) + 4, h: H - 22 - (y + Math.round(now) + 4) } : null;
-  return { S, scale, board, box: { x: Math.floor((W - DLG.w) / 2), y }, note: { x: Math.floor(W / 2), y: H - 14 } };
+  const scale = Math.max(4, Math.min(W >= 200 ? 8 : 7, Math.floor((cy - 44) / 16)));
+  return { S, scale, box: { x: Math.floor((W - DLG.w) / 2), y, h, big: false }, note: { x: Math.floor(W / 2), y: H - 14 }, wall: null, board: null };
 }
 function sceneScreen(app) {
   const d = app.dlg, t = app.time, sc = d.scene;
   const def = levelDef(sc.level);
   const frost = !!sc.frost && d.pc >= (sc.frostAt || 0);
-  const want = dlgLineH(d.cur);
-  const boxH = Math.round(app.dlgH && Math.abs(app.dlgH - want) > 0.5 ? app.dlgH : want);
-  const { S, box, note, scale, board } = sceneLayout(W, H, LAY.mode, sceneBlockH(sc), boxH + Math.round(app.dlgCH || 0));
-  DLG.x = box.x; DLG.y = box.y;
-  drawMarket(t, { rain: !!def?.rain, festival: !!def?.festival && !sc.after, frost }, S);
+  const { S, box, note, scale, wall, board } = sceneLayout(W, H, LAY.mode, sceneBlockH(sc));
+  Object.assign(DLG, box);
+  if (wall) { // the stall's back wall behind the window (side by side)
+    drawMarket(t, { rain: !!def?.rain, festival: !!def?.festival && !sc.after, frost }, { ...S, w: W });
+    woodFloor(wall.y, wall.x, wall.w);
+    R(wall.x - 3, 14, 3, H - 14, C.woodD); R(wall.x - 2, 14, 1, H - 14, C.wood); R(wall.x - 4, 14, 1, H - 14, C.ink);
+  } else drawMarket(t, { rain: !!def?.rain, festival: !!def?.festival && !sc.after, frost }, S);
   if (sc.spirit) inScene(() => drawCustomer(sc.spirit, 98, COUNTER_Y + 2, { t, scale }), S);
   if (def?.rain) drawRain(t, S);
-  awningAndCounter(t, { react: sc.dog || SPIRITS[sc.spirit]?.dog || null, frost }, S, S.h);
+  const solo = !sc.spirit ? { dogX: 90, dogScale: scale } : {}; // no spirit: Chimaek takes the stage
+  awningAndCounter(t, { react: sc.dog || SPIRITS[sc.spirit]?.dog || null, frost, ...solo }, S, S.h);
   if (board) stallFront(S, { level: def ? sc.level : 13, def: def || {}, time: t }, board);
   rbox(4, 18, 122, 13, C.ink);
   text(`NIGHT ${sc.level}: ${sc.title.toUpperCase()}`, 8, 22, { color: C.gold });
   hit(0, 14, W, H - 14, () => app.dlgTap(), 'dialog');
-  // the dialogue box
-  const B = { ...DLG, h: boxH };
+  // the dialogue window
+  const B = DLG;
   rbox(B.x, B.y + 2, B.w, B.h, C.ink);
   rbox(B.x, B.y, B.w, B.h, C.cream);
   R(B.x + 2, B.y + 2, B.w - 4, B.h - 4, C.white);
   const who = d.cur ? d.cur.who : sc.spirit;
   let ty = B.y + 8;
   if (who !== 'STORY') {
-    rbox(B.x + 6, B.y + 6, 36, 36, VOICE[who] ? C.greyDD : C.night1);
-    if (VOICE[who]) drawVoice(B.x + 8, B.y + 8, t);
-    else drawPortrait(who, B.x + 8, B.y + 8, 2, t);
-    text(VOICE[who] ? VOICE[who].name : speakerName(who), B.x + 48, B.y + 10, { font: 'big', color: C.redD, outline: null });
+    const name = VOICE[who] ? VOICE[who].name : speakerName(who);
     const kind = VOICE[who] ? VOICE[who].kind : SPIRITS[who]?.kind;
-    if (kind) text(kind, B.x + 48, B.y + 21, { color: C.greyD, outline: null });
-    ty = B.y + HEAD_H;
+    if (B.big) { // a close-up: the face at 4x, the name under it
+      const fx = B.x + Math.floor(B.w / 2) - 36;
+      rbox(fx, B.y + 6, 72, 72, VOICE[who] ? C.greyDD : C.night1);
+      if (VOICE[who]) drawVoice(fx + 4, B.y + 10, t, 2);
+      else drawPortrait(who, fx + 4, B.y + 10, 4, t);
+      text(name, B.x + B.w / 2, B.y + 82, { font: 'big', color: C.redD, outline: null, align: 'center' });
+      if (kind) text(kind, B.x + B.w / 2, B.y + 93, { color: C.greyD, outline: null, align: 'center' });
+      ty = B.y + HEAD_H + BIG_HEAD;
+    } else {
+      rbox(B.x + 6, B.y + 6, 36, 36, VOICE[who] ? C.greyDD : C.night1);
+      if (VOICE[who]) drawVoice(B.x + 8, B.y + 8, t);
+      else drawPortrait(who, B.x + 8, B.y + 8, 2, t);
+      text(name, B.x + 48, B.y + 10, { font: 'big', color: C.redD, outline: null });
+      if (kind) text(kind, B.x + 48, B.y + 21, { color: C.greyD, outline: null });
+      ty = B.y + HEAD_H;
+    }
   }
+  // The window is a page of grandma's notebook: ruled lines under the text all
+  // the way down (so a short line still sits on a full page) and a red margin.
+  const showChoices = d.choice && lineTyped(app);
+  const ruleEnd = showChoices ? choiceBox(d, 0).y - 16 : B.y + B.h - 12;
+  for (let y = ty + 8; y <= ruleEnd; y += 10) R(B.x + 4, y, B.w - 8, 1, RULE);
+  R(B.x + 4, B.y + 3, 1, B.h - 6, MARGIN);
   if (d.cur) {
     const shown = d.cur.text.slice(0, Math.floor(app.dlgT * TYPE_RATE));
     // Wrap the whole line, then show only the typed part, so words don't jump.
@@ -244,9 +277,10 @@ function sceneScreen(app) {
       if (n > 0) text(r.slice(0, n), B.x + 7, ty + i * 10, { font: 'big', color: who === 'STORY' ? C.purple : C.ink, outline: null });
     });
   }
-  if (d.choice && lineTyped(app) && Math.abs((app.dlgCH || 0) - choicesH(d, true)) < 2) {
-    rbox(B.x + 3, B.y + B.h + 1, 50, 9, C.ink);
-    text('YOUR ANSWER', B.x + 6, B.y + B.h + 3, { color: C.cream });
+  if (showChoices) {
+    const c0 = choiceBox(d, 0);
+    R(B.x + 6, c0.y - 5, B.w - 12, 1, C.cream);
+    text('YOUR ANSWER', B.x + 7, c0.y - 13, { color: C.greyD, outline: null });
     d.choice.forEach((opt, k) => {
       const c = choiceBox(d, k);
       button(c.x, c.y, c.w, c.h, opt.text.toUpperCase(), C.blueD, () => app.dlgChoose(k), 'choice', 'small', `choice:${k}`);
@@ -264,10 +298,10 @@ function sceneScreen(app) {
   }
 }
 // The cold voice: no face, only frost and two pale eyes.
-function drawVoice(x, y, t) {
-  for (let j = 0; j < 32; j += 2) for (let i = (j / 2) % 2; i < 32; i += 2) R(x + i, y + j, 1, 1, '#8fa4d8');
+function drawVoice(x, y, t, k = 1) { // 32 x 32 (64 x 64 at k = 2)
+  for (let j = 0; j < 32; j += 2) for (let i = (j / 2) % 2; i < 32; i += 2) R(x + i * k, y + j * k, k, k, '#8fa4d8');
   const blink = Math.sin(t * 0.7) > 0.95;
-  if (!blink) { R(x + 9, y + 13, 3, 2, C.white); R(x + 20, y + 13, 3, 2, C.white); }
+  if (!blink) { R(x + 9 * k, y + 13 * k, 3 * k, 2 * k, C.white); R(x + 20 * k, y + 13 * k, 3 * k, 2 * k, C.white); }
 }
 
 // ---------- story log ----------

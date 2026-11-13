@@ -224,7 +224,8 @@ export function counterDecor(t, dogOpts = {}) {
     rbox(46, COUNTER_Y + 7, w, 10, '#2c4a34', C.woodDD);
     text(str, 46 + w / 2, COUNTER_Y + 9, { color: C.cream, align: 'center', outline: null });
   }
-  if (!dogOpts.none) drawShiba(20, COUNTER_Y + 2, { t, react: dogOpts.react || null, mood: dogOpts.mood || 'wait' });
+  // (dogX, dogScale: a scene with no spirit puts Chimaek centre stage, bigger)
+  if (!dogOpts.none) drawShiba(dogOpts.dogX ?? 20, COUNTER_Y + 2, { t, react: dogOpts.react || null, mood: dogOpts.mood || 'wait', scale: dogOpts.dogScale || 2 });
 }
 // A tall counter front (side by side) holds the stall's menu board: tonight's
 // dishes and drinks with their prices (the special marked X2). Screen
