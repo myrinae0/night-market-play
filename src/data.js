@@ -83,7 +83,7 @@ export const sauceSuits = (id, item) => {
 // (`air` seconds after the last one) spills a little; after `idleSafe` seconds
 // without a toss the food starts to scorch and is burnt `scorchTime` later.
 //
-// Tuning history (Chris, after playing on his phone):
+// Tuning history (after phone playtests):
 //  - Nov 13, 1 AM: good and perfect windows about 1.5x as wide.
 //  - Nov 13, 2 AM: cooking about 1.5x slower (`time` x1.5, so "done" comes
 //    1.5x later) so juggling two or three stations is comfortable, and the

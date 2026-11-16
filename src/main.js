@@ -7,7 +7,7 @@ import * as G from './game.js';
 import { boxGeom, COUNTER_Y, tapMode, guestX, grillSlotX, basketX, WOK_CX, steamX, POT_CX, soupX } from './render.js';
 import { drawFrame, lineTyped, choiceBox, defaultTitlePage, TITLE_PAGES, logPages, shopPages, defaultShopPage, badgePages } from './screens.js';
 import { computeView, setLayout, LAY } from './layout.js';
-import { designToScreen, setPatterns } from './ui.js';
+import { designToScreen, setPatterns, pickHit } from './ui.js';
 import { tipSetFor, newTips, currentTip, markSeen, showTipsAgain } from './tips.js';
 import { createFx, updateFx, spawn, floatText, coinBurst, bounce, toast } from './fx.js';
 import * as audio from './audio.js';
@@ -525,6 +525,10 @@ function hitAt(p) {
   }
   return null;
 }
+// A tap (pointer up): a small button also takes taps just outside it, so
+// every button is at least a fingertip (44 CSS px) to aim at (pickHit).
+const TAP_MIN_CSS = 44;
+const tapHit = (p) => pickHit(app.reg.hits, p.x, p.y, (TAP_MIN_CSS * view.bw) / view.cssW);
 // Taps on these always win over picking food up.
 const BUTTON_TAGS = new Set(['ui', 'tab', 'arrow', 'settings']);
 const canDrag = () => app.screen === 'game' && app.g && app.g.phase === 'play' && !tapMode(app) && !app.slide && !app.settings;
@@ -661,7 +665,7 @@ window.addEventListener('pointerup', (e) => {
     return;
   }
   if (Math.hypot(dx, dy) > 10) return;
-  const h = hitAt(p);
+  const h = tapHit(p);
   if (!h) { if (g) g.held = null; return; }
   if (g && g.held && h.tag !== 'tray' && !String(h.tag).startsWith('sauce:')) g.held = null;
   if (String(h.tag).startsWith('ready:') || String(h.tag).startsWith('bin:')) bounce(app.fx, h.tag);

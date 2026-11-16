@@ -17,6 +17,33 @@ export const registry = () => reg;
 export function clearHits() { reg.hits = []; reg.sources = []; reg.targets = []; reg.frames = []; }
 // A tap target. tag 'ui' plays a click; `key` names it (tests and tools find it).
 export function hit(x, y, w, h, fn, tag = 'ui', key = null) { reg.hits.push({ x: x + ox, y: y + oy, w, h, fn, tag, key }); }
+// Which tap target a tap at (x, y) presses. Targets are checked top first (the
+// last registered). A target smaller than `min` (art px: about 44 CSS px, a
+// fingertip) also takes taps just outside it, as if it were `min` wide and
+// tall, centred on itself, when the tap pressed nothing else or only a
+// full-screen backdrop under it; the closest such target wins.
+const CATCH_ALL = new Set(['backdrop', 'overlay']);
+export function pickHit(hits, x, y, min = 0) {
+  let exact = -1;
+  for (let i = hits.length - 1; i >= 0; i--) {
+    const h = hits[i];
+    if (x >= h.x && x < h.x + h.w && y >= h.y && y < h.y + h.h) { exact = i; break; }
+  }
+  if (exact >= 0 && !CATCH_ALL.has(hits[exact].tag)) return hits[exact];
+  let best = null, bestD = Infinity;
+  if (min > 0) {
+    for (let i = hits.length - 1; i > exact; i--) {
+      const h = hits[i];
+      if (CATCH_ALL.has(h.tag) || (h.w >= min && h.h >= min)) continue;
+      const px = Math.max(0, (min - h.w) / 2), py = Math.max(0, (min - h.h) / 2);
+      if (x < h.x - px || x >= h.x + h.w + px || y < h.y - py || y >= h.y + h.h + py) continue;
+      const dx = Math.max(h.x - x, 0, x - (h.x + h.w)), dy = Math.max(h.y - y, 0, y - (h.y + h.h));
+      const d = Math.hypot(dx, dy);
+      if (d < bestD) { bestD = d; best = h; }
+    }
+  }
+  return best || (exact >= 0 ? hits[exact] : null);
+}
 // Something you can pick up and drag (drag controls).
 export function src(x, y, w, h, payload) { reg.sources.push({ x: x + ox, y: y + oy, w, h, payload }); }
 // Somewhere a dragged thing can land.

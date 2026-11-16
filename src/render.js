@@ -542,7 +542,7 @@ export function stationAlert(g, id) {
 // The station's name on its tab, or its short name when the tab is narrow.
 export function tabLabel(id, w) {
   const full = STATIONS[id].name.toUpperCase();
-  return tw(full) <= w - 2 ? full : (STATIONS[id].tab || full).toUpperCase();
+  return tw(full) <= w - 4 ? full : (STATIONS[id].tab || full).toUpperCase(); // a pixel of tab each side
 }
 function tabs(app) {
   const g = app.g, T = LAY.tabs;

@@ -168,7 +168,7 @@ function titleCards(app, pitch = 41) {
     text(`LEVEL ${SHOP_FROM_LEVEL}`, 152, by + 6, { color: C.greyD, align: 'center' });
   }
   text('ART: AROACHIFOUNDONMYPILLOW, KENNEY', 90, by + 33, { align: 'center', color: C.grey });
-  text('(CC0) AND CODE. SEE CREDITS.MD', 90, by + 40, { align: 'center', color: C.grey });
+  text('(CC0) AND CODE. A GAME BY MYRINAE', 90, by + 40, { align: 'center', color: C.grey });
 }
 
 // ---------- daily goals ----------
